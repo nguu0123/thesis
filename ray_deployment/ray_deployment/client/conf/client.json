@@ -1,0 +1,6 @@
+{ 
+    "uid": "Aaltosea1",
+    "application_id": "object detection",
+    "min_ensemble": 2,
+    "min_confidence": 80
+}
