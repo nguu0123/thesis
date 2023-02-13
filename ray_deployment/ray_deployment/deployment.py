@@ -1,4 +1,6 @@
-import requests
+import requests,time, argparse
+from starlette.requests import Request
+import random
 from fastapi import FastAPI
 from ray import serve
 import pymongo
@@ -31,7 +33,7 @@ def max_aggregate(predictions):
     return agg_prediction
 
 
-@serve.deployment()
+@serve.deployment
 class Yolo8Inference:
     def __init__(self, param):
         self.model = Yolo8(param)
@@ -58,11 +60,9 @@ class Ensemble_ML:
         self.yolo5 = yolo5
         self.yolo8 = yolo8
 
-    async def __call__(self, http_request):
+    async def __call__(self, http_request: Request):
         files = await http_request.form()
         image = await files["image"].read()
-        user_data = await files["user_data"].read()
-        print(json.loads(user_data))
         np_array = np.frombuffer(image, np.uint8)
         im = cv2.imdecode(np_array, cv2.IMREAD_COLOR) 
         en_im = enhance_image.remote(im)
@@ -77,11 +77,14 @@ class Ensemble_ML:
         response["prediction"] = {"aggregated":agg_pred,"yolo5":yl5["prediction"], "yolo8": yl8["prediction"]}
         response["image"] = yl8["image"]
         return response
-        
-
 
         
 # 
 yolo5 = Yolo5Inference.bind("yolov5n")
 yolo8 = Yolo8Inference.bind("yolov8n")
 ensemble = Ensemble_ML.bind(yolo5, yolo8)
+
+
+
+
+

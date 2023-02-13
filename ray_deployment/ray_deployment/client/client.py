@@ -11,7 +11,7 @@ args = parser.parse_args()
 concurrent = int(args.th)
 time_sleep = float(args.sl)
 # url = 'http://192.168.1.148:5000/inference_aaltosea'
-url = 'http://0.0.0.0:5000/'
+url = 'http://127.0.0.1:8000/'
 
 
 def sender(num_thread):
@@ -20,8 +20,9 @@ def sender(num_thread):
     while (time.time() - start_time < 600):
         print("This is thread: ",num_thread, "Starting request: ", count)
         ran_file = random.choice(os.listdir("./image"))
-        files = {'image': open("./image/"+ran_file, 'rb'), 'user_data':open("./conf/client.json", 'rb')}
+        files = {'image': open("./image/"+ran_file, 'rb')}
         response = requests.post(url, files=files)
+        print(response.__dict__)
         prediction = response.json()
         print(prediction["prediction"])
         image = np.asarray((prediction["image"]))
