@@ -1,0 +1,57 @@
+the usual flow of data  -> the complexity of it -> one challenge in data lineage
+use case of data lineage: 
+    migration of applications and reporst
+    assurance of integrity in reports
+Overview of data quality:
+  Different types of data:
+    The concept of manufacturing products
+      Raw data item
+      Component data item
+      Information product
+    Based on the structure
+      Structured data
+      Semi-structured data
+      Unstructured data
+  Data dimensions are attributes of data quality that can, when measured correctly, indicate
+  the overall quality level of data
+  Demensions are highly context dependent and their relevancy and importance can vary between
+  organization and types of data
+  The most common dimensions are completeness, timeliness, and accuracy, consistency and accessibility
+DQ in IoT:
+  Characteristics
+    Uncertain, erroneous and noisy
+    Voluminuous and distributed
+    Smooth variation
+    Continuous
+    Correlation
+    Periodicity
+    Markovian behavior
+  Data quality: how well data meet the requirements of data consumers
+  Exist a plethora of DQ dimensions (both domain-agnostic and domain-specific) due to the
+  fact that data are a represenation of various aspect of the real world phenomena
+  Categories of DQ dimension
+    Instrinsic
+    Contextual
+    Representational
+    Accessibility
+DQ and IoT:
+  Popular DQ dimensions
+    Accuracy
+    Timeliness
+    Completeness
+    Data volume
+  Methods used to measure DQ in IoT
+    Measurements between techniques, sources or defined attributes
+    Measurements with a reference
+    Devices or algorithms validation
+    Meaasurement within time interval
+    Measurement of presence
+    Process observations
+    Log files review
+Problem with MLaas:
+  ML consumers need to know about the confidence of the ML model as it can endanger
+  peoples' lives, such as e-health monitoring where uncertain decisions cannot be allowed 
+  or tolerated in the e-heal domain (Data quality in IoT)
+  E-health applications are among the most critical IoT applications considering
+  the human life factor involved and, as a consequence, do not tolerate uncertainty in DQ (DQ in IoT)
+
