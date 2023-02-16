@@ -54,4 +54,4 @@ Problem with MLaas:
   or tolerated in the e-heal domain (Data quality in IoT)
   E-health applications are among the most critical IoT applications considering
   the human life factor involved and, as a consequence, do not tolerate uncertainty in DQ (DQ in IoT)
-
+  The complexity of the pipeline
