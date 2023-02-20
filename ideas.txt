@@ -48,6 +48,23 @@ DQ and IoT:
     Measurement of presence
     Process observations
     Log files review
+FA2
+  Inference requests may follow uncertai execution paths
+  For sophisticated applications, multiple DNNs may be involved in the process where all these
+  DNNs are chained or orchestrated into complex data flow graph, represented by a direct acyclic
+  grap (DAG), to process the input data step by step
+  For microservices, request processing typically follows a deterministic dataflow-graph, instead
+  of one with conditional execution paths as in inference serving systems
+Automated ensemble
+  Heterogeneity of DNNs,
+  Edge computing platforms
+  Resource constraint in edge computing
+Application of ML for IoT
+  Problem
+    Heteregenous data
+SAC
+  Problem
+    Only work in certain scenario
 Problem with MLaas:
   ML consumers need to know about the confidence of the ML model as it can endanger
   peoples' lives, such as e-health monitoring where uncertain decisions cannot be allowed 
@@ -55,3 +72,6 @@ Problem with MLaas:
   E-health applications are among the most critical IoT applications considering
   the human life factor involved and, as a consequence, do not tolerate uncertainty in DQ (DQ in IoT)
   The complexity of the pipeline
+Benefits from data lineage
+  tracing down the problems -> can upgrade the model to fit the new data distribution
+  optimizing QoA4ML when the contract is violated, faster to detect root cause

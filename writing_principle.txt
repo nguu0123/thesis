@@ -1,0 +1,17 @@
+Given-before-new principle
+Four topical progression patterns
+  Constant topic: use the same topic in a series of sentences
+  Step-wise topic: an element of the comment of the previous sentinces becomes the topic of the next
+  Hypertopic: first sentince introduces a general topic following by sentences form sub-topics
+  Split topic: two or more elements of the comment in the first sentence are picked up as the topic of the following sentences
+Light-before-heavy principle : start the sentence with a short, simple subject and place long, compilcated concepts after the verbs
+Repairing problems
+   Use synonymous repetition
+   Use pronouns (it, they / this these)
+   Use topicalising phrases
+   Use the active-passive shift
+   Use the equative shift
+   Use the animate-inanimate shift
+   Use the personal-impersonal shift
+   Use introductory it (dummy subject)
+   Use existential there (dummy subject)

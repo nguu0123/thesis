@@ -1,0 +1,34 @@
+{
+    "cpu_stat":{
+        "cpu":{
+            "class": "Gauge",
+            "description": "monitor system cpu percentage",
+            "default": -1,
+            "key": "percentage"
+        }
+    },
+    "mem_stat":{
+        "memory": {
+            "class": "Gauge",
+            "description": "monitor system memory used",
+            "default": 0,
+            "key": "used"
+        }
+    },
+    "proc_cpu":{
+        "proc_cpu": {
+            "class": "Gauge",
+            "description": "monitor process CPU precentage",
+            "default": 0,
+            "key": "used"
+        }
+    },
+    "proc_mem":{
+        "proc_mem": {
+            "class": "Gauge",
+            "description": "monitor process memory precentage",
+            "default": 0,
+            "key": "used"
+        }
+    }
+}
