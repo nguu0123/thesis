@@ -75,3 +75,5 @@ Problem with MLaas:
 Benefits from data lineage
   tracing down the problems -> can upgrade the model to fit the new data distribution
   optimizing QoA4ML when the contract is violated, faster to detect root cause
+  data in IoT is periodic, we can combine violation into a batch for tomorrow resolution
+  scenario for a human face validation IoT devies
