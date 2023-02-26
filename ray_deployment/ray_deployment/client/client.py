@@ -61,8 +61,8 @@ class Client():
         self.amqp_connector.send_data(files, 'client1')
     def message_processing(self, ch, method, props, body):
         data = json.loads(body)
-        if data:
-            output = data['prediction']['yolov5s'][0]['object_0'][0]
+        if data['prediction']['yolo5']['yolov5n']:
+            output = data['prediction']['yolo5']['yolov5n'][0]['object_0'][0]
             print(output['name'], output['confidence'], '\n')
         else:
             print("cant detect")
