@@ -65,6 +65,13 @@ Application of ML for IoT
 SAC
   Problem
     Only work in certain scenario
+Holistic explainability
+  Many problems of IoT ML solutions can be linked back to quality of data, which depends on different
+  factors such as measurement errors, precision, environmental noise, and discrete observations
+  At serving, the requirements will focus on methods to detect quality of data and cause-effect between
+  QoD and ML service performance for dynamic inferences, which is the major focus in IoT Cloud systems
+ML explainability for external stakeholders
+
 Problem with MLaas:
   ML consumers need to know about the confidence of the ML model as it can endanger
   peoples' lives, such as e-health monitoring where uncertain decisions cannot be allowed 

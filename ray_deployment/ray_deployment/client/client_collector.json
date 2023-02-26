@@ -1,0 +1,7 @@
+{
+            "end_point": "localhost",
+            "exchange_name": "object_detection_respond",
+            "exchange_type": "topic",
+            "in_routing_key": "object_detection_respond",
+            "in_queue":"client_1"
+}

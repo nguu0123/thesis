@@ -1,0 +1,9 @@
+{
+
+            "end_point": "localhost",
+            "exchange_name": "object_detection_task",
+            "exchange_type": "topic",
+            "in_routing_key": "object_detection_task.#",
+            "in_queue":"task_1"
+
+}

@@ -20,19 +20,16 @@ def enhance_image(image):
                    [-1, 5,-1],
                    [0, -1, 0]])
     enhanced_im = cv2.filter2D(src=image, ddepth=-1, kernel=kernel)
-    print("enhance_image")
     return enhanced_im
 
 @ray.remote
 def mean_aggregate(predictions):
     agg_prediction = aggregation.agg_mean(predictions)
-    print("mean_agg")
     return agg_prediction
 
 @ray.remote
 def max_aggregate(predictions):
     agg_prediction = aggregation.agg_max(predictions)
-    print("max_agg")
     return agg_prediction
 
 
@@ -43,7 +40,6 @@ class Yolo8Inference:
 
     def predict(self, image):
         prediction, pre_img = self.model.yolov8_inference(image)
-        print("yolo8")
         return {"prediction": prediction, "image": pre_img}
 
 @serve.deployment
@@ -54,7 +50,6 @@ class Yolo5Inference:
 
     def predict(self, image):
         prediction, pre_img = self.model.yolov5_inference(image)
-        print("yolo5")
         return {"prediction": prediction, "image": pre_img}
 
 @serve.deployment
@@ -74,6 +69,7 @@ class Ensemble_ML:
         yl5 = ray.get(yl5)
         yl8 = ray.get(yl8)
         yl = yl5["prediction"]
+        print(yl5)
         yl.update(yl8["prediction"])
         agg_pred = await max_aggregate.remote(yl)
         response["prediction"] = {"aggregated":agg_pred,"yolo5":yl5["prediction"], "yolo8": yl8["prediction"]}
