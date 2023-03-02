@@ -1,0 +1,32 @@
+{
+        "Timestamp":{
+            "class": "Gauge",
+            "description": "Timestamp",
+            "default": 0
+        },
+        "Responsetime":{
+            "class": "Gauge",
+            "description": "response time",
+            "default": 0
+        },
+        "Errors":{
+            "class": "Gauge",
+            "description": "Number of errors",
+            "default": 0
+        },
+        "Request served": {
+            "class": "Counter",
+            "description": "Number of request served",
+            "default": 0
+        },
+        "Confidence": {
+            "class": "Gauge",
+            "description": "Confidence of inference",
+            "default": 0
+        },
+        "Accuracy": {
+            "class": "Gauge",
+            "description": "Accuracy of inference",
+            "default": 0
+        }
+}
