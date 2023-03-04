@@ -3,7 +3,7 @@ from qoa4ml.connector.amqp_connector import Amqp_Connector
 from qoa4ml.reports import Qoa_Client
 from qoa4ml.utils import load_config, get_sys_cpu, get_sys_mem
 import PIL.Image as Image
-import io, cv2, time, json, requests
+import io, cv2, time, json, requests, threading
 import numpy as np
 from datetime import datetime
 from yolov8.yolov8 import Yolo8
@@ -27,12 +27,8 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 class Basic_collector:
-    def __init__(
-        self, collector_config: dict, connector_config: dict, client_config: dict,
-        qoa_config: dict, host_object: object = None
-    ):
+    def __init__(self, collector_config: dict, host_object: object = None):
         self.amqp_collector = Amqp_Collector(collector_config, self)
-        self.amqp_connector = Amqp_Connector(connector_config)
         # self.qoa_client = Qoa_Client(client_config, qoa_config)
         # metrics = load_config('./metrics.json')
         # self.qoa_client.add_metric(metrics)
@@ -44,20 +40,22 @@ class Basic_collector:
     def message_processing(self, ch, method, props, body):
         start_time = time.time()
         data = json.loads(body)
-        image = bytes.fromhex(data['file'])
+        image = bytes.fromhex(data["file"])
         result = requests.post(url, files={"image": image})
         result = result.json()
         respond = {}
-        try: 
+        try:
             if result is not None:
                 respond["prediction"] = result["prediction"]
                 respond["image"] = result["image"]
-                respond['true_label'] = data['true_label']
-                respond['request_time'] = data['request_time']
-                self.confidence = respond["prediction"]['aggregated'][0]['object_0']['confidence']
+                respond["true_label"] = data["true_label"]
+                respond["request_time"] = data["request_time"]
+                self.confidence = respond["prediction"]["aggregated"][0]["object_0"][
+                    "confidence"
+                ]
         except:
-            print(result['prediction'])
-        
+            print(result["prediction"])
+
         print("Server respond time: {}".format(time.time() - start_time))
         self.request_served += 1
         self.timestamp = time.time()
@@ -69,9 +67,11 @@ class Basic_collector:
         )
 
 
-collector_config = load_config("./server_collector.json")
-connector_config = load_config("./server_connector.json")
-client_config = load_config("./client.json")
-qoa_config = load_config("./qoa.json")
-basic_collector = Basic_collector(collector_config, connector_config, client_config, qoa_config)
-basic_collector.amqp_collector.start()
+server_collector_config = load_config("./server_collector.json")
+client_collector_config = load_config("./client_collector.json")
+server_collector = Basic_collector(server_collector_config)
+client_collector = Basic_collector(client_collector_config)
+server_thread = threading.Thread(target=server_collector.amqp_collector.start)
+server_thread.start()
+client_thread = threading.Thread(target=client_collector.amqp_collector.start)
+client_thread.start()

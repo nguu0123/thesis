@@ -46,13 +46,8 @@ def sender(num_thread):
 
 
 class Client:
-    def __init__(
-        self, connector_config: dict, collector_config: dict, log: bool = False
-    ):
-        self.amqp_connector = Amqp_Connector(connector_config, log)
-        self.amqp_collector = Amqp_Collector(collector_config, self)
-        self.sub_thread = threading.Thread(target=self.amqp_collector.start)
-        self.sub_thread.start()
+    def __init__(self, connector_config: dict, log: bool = False):
+        # self.amqp_connector = Amqp_Connector(connector_config, log)
         self.correct_detect = 0
         self.request_sent = 0
         self.average_response_time = 0
@@ -62,55 +57,51 @@ class Client:
     def send_message(self):
         ran_class = random.choice(os.listdir("./images/"))
         ran_file = random.choice(os.listdir("./images/{}".format(ran_class)))
-        files = open("./images/" + ran_class + "/" + ran_file, "rb").read()
-        files = bytearray(files)
-        request = {
-            'file': files.hex(),
-            'true_label': ran_class,
-            'request_time': time.time()
-        }
-        self.amqp_connector.send_data(json.dumps(request), "client1")
+        file = open("./images/" + ran_class + "/" + ran_file, "rb").read()
         self.image_size = 640 * 480
         self.average_object_area_percentage = 0
-
-    def message_processing(self, ch, method, props, body):
         self.request_sent += 1
-        data = json.loads(body)
-        image = np.asarray((data["image"]))
-
-        # Comment this to use multi-thread
-        cv2.imshow("lable", image.astype(np.uint8))
-        cv2.waitKey(2000)
+        start_time = time.time()
+        response = requests.post(url, files={"data": file, "file name": ran_file})
+        prediction = response.json()
+        print(prediction["prediction"])
         object_area = 0
         try:
-            aggregated_prediction = data['prediction']['aggregated'][0]
+            aggregated_prediction = prediction["prediction"]["aggregated"][0]
             for cur_object in aggregated_prediction.keys():
                 print(aggregated_prediction[cur_object])
-                object_area = (aggregated_prediction['xmax'] - aggregated_prediction['xmin']) * (aggregated_prediction['ymax'] - aggregated_prediction['ymin'])
+                object_area = (
+                    aggregated_prediction["xmax"] - aggregated_prediction["xmin"]
+                ) * (aggregated_prediction["ymax"] - aggregated_prediction["ymin"])
                 self.average_object_area_percentage += object_area / self.image_size
-                print(aggregated_prediction['name'], aggregated_prediction['confidence'])
-                if data['true_label'] == aggregated_prediction['name']:
-                    print('correct detection')
+                print(
+                    aggregated_prediction["name"], aggregated_prediction["confidence"]
+                )
+                if ran_class == aggregated_prediction["name"]:
+                    print("correct detection")
                     self.correct_detect += 1
                 else:
-                    print('incorrect detection' )
+                    print("incorrect detection")
         except:
-            self.errors += 1 
-        self.response_time = time.time() - data['request_time']
+            self.errors += 1
+        self.response_time = time.time() - start_time
         self.average_response_time += self.response_time
         print("Response time {}".format(self.response_time))
-        print("Avereage response time {}".format(self.average_response_time / self.request_sent))
-        print('Accuracy {}'.format(self.correct_detect / self.request_sent))
-        print('Avereage percentage of object in the image {}'.format(self.average_object_area_percentage / self.request_sent))
-        print('Number of errors {}\n'.format(self.errors))
-        time.sleep(10)
-        self.send_message()
-        
-
+        print(
+            "Avereage response time {}".format(
+                self.average_response_time / self.request_sent
+            )
+        )
+        print("Accuracy {}".format(self.correct_detect / self.request_sent))
+        print(
+            "Avereage percentage of object in the image {}".format(
+                self.average_object_area_percentage / self.request_sent
+            )
+        )
+        print("Number of errors {}\n".format(self.errors))
 
 connector_config = load_config("./client_connector.json")
-collector_config = load_config("./client_collector.json")
-client = Client(connector_config, collector_config)
+client = Client(connector_config)
 client.send_message()
 # Multi-thrad
 # for i in range(concurrent):

@@ -1,6 +1,6 @@
 {
             "end_point": "localhost",
-            "exchange_name": "object_detection_task",
+            "exchange_name": "reports",
             "exchange_type": "topic",
-            "out_routing_key": "object_detection_task.client1"
+            "out_routing_key": "client_report"
 }

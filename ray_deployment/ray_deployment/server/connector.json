@@ -1,9 +1,6 @@
 {
-
             "end_point": "localhost",
             "exchange_name": "reports",
             "exchange_type": "topic",
-            "in_routing_key": "server_report",
-            "in_queue":"server_report"
-
+            "out_routing_key": "server_report"
 }
