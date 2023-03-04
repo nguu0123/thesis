@@ -130,10 +130,9 @@ class MostBasicIngress:
                 data = inference_result[model] 
                 object_num = 0
                 for detected_object in data:
-                    if isinstance(detected_object, list):
-                        cur_object = detected_object[0]["object_" + object_num]
-                    else:
-                        cur_object = detected_object["object" + object_num]
+                    cur_object = detected_object["object_{}".format(object_num)]
+                    if isinstance(cur_object, list):
+                        cur_object = cur_object[0]
                     self.append_to_log(
                         [
                             image_id,
