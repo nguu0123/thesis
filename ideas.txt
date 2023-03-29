@@ -89,4 +89,26 @@ Benefits from data lineage
   combine with other techniques (auto scaling for DNN, auto ensemble) can bring a much more 
   reliable pipeline
   capture more data about the inference contect, can be used for automated ensemble
-  
+ Data lineage application and history
+  Has different interpretation and approachs to provenance
+  Wide variety of provenance 
+  A new novel end product of provenance: infererence result
+  Four main provenance types: provenance meta-data, information systems provenance, workflow provenance,
+  data provenance
+  Tackle understandability and quality application of provenanceA survey on provenance: What for? What form? What from?
+  understandability includes identify what information to convey and how
+  At first, mostly used for database  
+
+Prov Data in ML lifecycle
+  PLLib design has two goals: to keep execution overhead low and avoid major modifications in the 
+  user code while preserving the provenance data analytical capabilities
+Problems with current implementation
+  Keras-Prov
+    can only used for keras library
+    can only capture 
+    focus on representing training-specific data from DL experiments
+Cons and Pros of PROV-DM 
+  domain-agnostic can add new relationship that is specific to the probem
+  for client, straightforward relationship and 
+  for provider, create a universal standard data model for both training and serving
+  PROV-ML is for training phase,
