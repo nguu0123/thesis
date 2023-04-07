@@ -1,0 +1,22 @@
+postgres:
+  image: postgres:9.4
+  volumes:
+    - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+version: '3.8'
+services:
+  db:
+    image: postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=nguu0123
+      - POSTGRES_PASSWORD=nguu0123456
+    ports:
+      - '5432:5432'
+    volumes: 
+      - ${PWD}/postgres-docker:/var/lib/postgresql/data 
+      - ~/git/thesis/database/ db:/var/lib/postgresql/data
+      - ./tables/:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  db:
+    driver: local

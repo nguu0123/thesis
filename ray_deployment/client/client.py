@@ -63,7 +63,7 @@ class Client:
         np_array = np.frombuffer(file, np.uint8)
         im = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
         height, width, _ = im.shape
-        self.monitor(time.time() - start_time, prediction["prediction"], ran_file, ran_class, height, width)
+        #self.monitor(time.time() - start_time, prediction["prediction"], ran_file, ran_class, height, width)
 
     def monitor(self, response_time, inference_result, image_id, true_class, image_height, image_width):
         for model in inference_result.keys():
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     try:
         while i < 1000:
             client.send_message()
-            i += 1 
+            i += 1
     except KeyboardInterrupt:
         print('interrupted!')
 # Multi-thrad

@@ -1,5 +1,6 @@
 import argparse
 import json
+from math import acos
 import os
 import os.path
 import random
@@ -28,12 +29,13 @@ from ray.serve.http_adapters import json_request
 from starlette.requests import Request
 from yolov5.yolov5 import Yolo5
 from yolov8.yolov8 import Yolo8
-
+from prov.prov_function import LineageManager, captureInputData, capture
 
 @ray.remote
-def enhance_image(image):
+@capture(activityType='preprocessing')
+def enhance_image(data):
     kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-    enhanced_im = cv2.filter2D(src=image, ddepth=-1, kernel=kernel)
+    enhanced_im = cv2.filter2D(src=data.data, ddepth=-1, kernel=kernel)
     return enhanced_im
 
 
@@ -55,8 +57,9 @@ class Yolo8Inference:
         self.model = Yolo8(param)
         self.param = param
 
-    def predict(self, image):
-        prediction, pre_img = self.model.yolov8_inference(image)
+    @capture(activityType='predict')
+    def predict(self, data):
+        prediction, pre_img = self.model.yolov8_inference(data)
         return {"prediction": prediction, "image": pre_img, "model_name": self.param}
 
 
@@ -67,8 +70,9 @@ class Yolo5Inference:
         self.param = param
         self.inference_time = 0
 
-    def predict(self, image):
-        prediction, pre_img = self.model.yolov5_inference(image)
+    @capture(activityType='predict')
+    def predict(self, data):
+        prediction, pre_img = self.model.yolov5_inference(data)
         return {"prediction": prediction, "image": pre_img, "model_name": self.param}
 
 
@@ -77,23 +81,23 @@ class Ensemble_ML:
     def __init__(self, yolo5, yolo8):
         self.yolo5 = yolo5
         self.yolo8 = yolo8
-
     async def inference(self, data):
         np_array = np.frombuffer(data, np.uint8)
         im = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
-        en_im = enhance_image.remote(im)
+        im = captureInputData(im)
+        en_im = enhance_image.remote(data=im)
         response = {}
-        yl5 = await self.yolo5.predict.remote(en_im)
-        yl8 = await self.yolo8.predict.remote(en_im)
+        yl5 = await self.yolo5.predict.remote(data=en_im)
+        yl8 = await self.yolo8.predict.remote(data=en_im)
         yl5 = ray.get(yl5)
         yl8 = ray.get(yl8)
-        agg_pred = await max_aggregate.remote(yl5["prediction"] | yl8["prediction"])
+        agg_pred = await max_aggregate.remote(yl5.data["prediction"] | yl8.data["prediction"])
         response["prediction"] = {
             "aggregated": agg_pred,
-            yl5["model_name"]: yl5["prediction"][yl5["model_name"]],
-            yl8["model_name"]: yl8["prediction"][yl8["model_name"]],
+            yl5.data["model_name"]: yl5.data["prediction"][yl5.data["model_name"]],
+            yl8.data["model_name"]: yl8.data["prediction"][yl8.data["model_name"]],
         }
-        response["image"] = yl8["image"]
+        response["image"] = yl8.data["image"]
         return response
 
 
@@ -113,7 +117,6 @@ class MostBasicIngress:
         self.server_log_columns = ["Image ID", "Response time"]
         self.models_log = pd.DataFrame(columns=self.models_log_comlumns)
         self.server_log = pd.DataFrame(columns=self.server_log_columns)
-
     async def __call__(self, request: Request):
         start_time = time.time()
         time_stamp = datetime.fromtimestamp(time.time())
@@ -122,7 +125,6 @@ class MostBasicIngress:
         image_id = await files["file name"].read()
         response = await self.ensemble.inference.remote(data)
         response = ray.get(response)
-        self.monitor(start_time, time_stamp, response["prediction"], image_id)
         return response
 
     def monitor(self, start_time, times_stamp, inference_result, image_id):
