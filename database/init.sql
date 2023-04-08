@@ -18,11 +18,17 @@ CREATE TABLE IF NOT EXISTS DataQualityReport (
   PRIMARY KEY(id)
 );
 
+CREATE TABLE IF NOT EXISTS PredictionQuality (
+  id uuid DEFAULT uuid_generate_v4 (),
+  value json  NOT NULL,
+  PRIMARY KEY(id)
+);
 -- Create activity table
 
 CREATE TABLE IF NOT EXISTS Predict (
   id uuid DEFAULT uuid_generate_v4 (),
   start_time timestamp, 
+  end_time timestamp,
   PRIMARY KEY(id)
 );
 

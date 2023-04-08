@@ -109,6 +109,7 @@ if __name__ == '__main__':
         while i < 1000:
             client.send_message()
             i += 1
+        #client.send_message()
     except KeyboardInterrupt:
         print('interrupted!')
 # Multi-thrad
