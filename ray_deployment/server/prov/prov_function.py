@@ -6,18 +6,15 @@ import asyncpg
 import os
 import psutil
 import psycopg
-import asyncio
-import asyncpg
+import threading
 from datetime import datetime
-from qoa4ml.utils import load_config, get_proc_cpu, get_proc_cpu
+from qoa4ml.utils import load_config, get_proc_cpu, get_proc_cpu, thread
 from torch.nn.functional import linear
-from concurrent.futures import ThreadPoolExecutor
-import nest_asyncio
-
-nest_asyncio.apply()
-config = "postgresql://nguu0123:nguu0123456@172.17.0.3:5432/nguu0123"
 
 
+config = (
+        "user=nguu0123 password=nguu0123456 host=172.17.0.2 port=5432 dbname=nguu0123"
+    )
 class Data:
     def __init__(self, data, id=None, name=None):
         self.data = data
@@ -76,7 +73,7 @@ class PredictionQuality:
             return DataQualityReport(returnData, self.id)
 
 
-async def capturePredictActivity(
+def capturePredictActivity(
     activityId,
     startTime,
     endTime,
@@ -87,164 +84,142 @@ async def capturePredictActivity(
     modelId,
 ):
     global config
-    connection = await asyncpg.connect(config)
-    async with connection.transaction():
-        await connection.execute(
-            """ INSERT INTO predict (id, start_time, end_time) VALUES ($1,$2,$3)""",
-            activityId,
-            startTime,
-            endTime,
-        )
+    connection = psycopg.connect(config, autocommit=True)
+    cursor = connection.cursor()
+    postgres_insert_query = (
+        """ INSERT INTO predict (id, start_time, end_time) VALUES (%s,%s,%s)"""
+    )
+    record_to_insert = (activityId, startTime, endTime)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO prediction (id, name) VALUES ($1,$2)""",
-            prediction.id,
-            prediction.name,
-        )
+    postgres_insert_query = """ INSERT INTO prediction (id, name) VALUES (%s,%s)"""
+    record_to_insert = (prediction.id, prediction.name)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
-            activityId,
-            prediction.id,
-        )
+    postgres_insert_query = (
+        """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+    )
+    record_to_insert = (activityId, prediction.id)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO used(activityid, entityid) VALUES ($1,$2)""",
-            activityId,
-            data.id,
-        )
+    postgres_insert_query = """ INSERT INTO used(activityid, entityid) VALUES (%s,%s)"""
+    record_to_insert = (activityId, data.id)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        predictionQuality = {"cpu": predictionCpu, "mem": predictionMem}
-        if "QoA" in prediction.data:
-            predictionQuality["QoA"] = prediction.data["QoA"]
-        predictionQualityId = str(uuid.uuid4())
+    predictionQuality = {"cpu": predictionCpu, "mem": predictionMem}
+    if "QoA" in prediction.data:
+        predictionQuality["QoA"] = prediction.data["QoA"]
+    predictionQualityId = str(uuid.uuid4())
+    postgres_insert_query = (
+        """ INSERT INTO predictionquality(id, value) VALUES (%s,%s)"""
+    )
+    record_to_insert = (predictionQualityId, json.dumps(predictionQuality))
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO predictionquality(id, value) VALUES ($1,$2)""",
-            predictionQualityId,
-            json.dumps(predictionQuality),
-        )
+    postgres_insert_query = (
+        """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+    )
+    record_to_insert = (activityId, predictionQualityId)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
-            activityId,
-            predictionQualityId,
-        )
-
-        await connection.execute(
-            """ INSERT INTO wasassociatedwith(activityid, agentid) VALUES ($1,$2)""",
-            activityId,
-            modelId,
-        )
-    await connection.close()
+    postgres_insert_query = (
+        """ INSERT INTO wasassociatedwith(activityid, agentid) VALUES (%s,%s)"""
+    )
+    record_to_insert = (activityId, modelId)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
 
-async def captureAssessDataQualityActivity(
-    activityId, data: Data, dataQualityReport: DataQualityReport
+def captureAssessDataQualityActivity(
+     activityId, data: Data, dataQualityReport: DataQualityReport
 ):
     global config
-    connection = await asyncpg.connect(config)
-    async with connection.transaction():
-        await connection.execute(
-            """ INSERT INTO dataqualityreport(id, value) VALUES ($1,$2)""",
-            dataQualityReport.id,
-            json.dumps(dataQualityReport.data),
-        )
+    connection = psycopg.connect(config, autocommit=True)
+    cursor = connection.cursor()
+    postgres_insert_query = (
+        """ INSERT INTO dataqualityreport(id, value) VALUES (%s,%s)"""
+    )
+    record_to_insert = (dataQualityReport.id, json.dumps(dataQualityReport.data))
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO assessdataquality(id, name) VALUES ($1,$2)""",
-            activityId,
-            "assess data quality",
-        )
+    postgres_insert_query = (
+        """ INSERT INTO assessdataquality(id, name) VALUES (%s,%s)"""
+    )
+    record_to_insert = (activityId, "assess data quality")
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
-            activityId,
-            dataQualityReport.id,
-        )
+    postgres_insert_query = (
+        """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+    )
+    record_to_insert = (activityId, dataQualityReport.id)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO used(activityid, entityid) VALUES ($1,$2)""",
-            activityId,
-            data.id,
-        )
-    await connection.close()
+    postgres_insert_query = """ INSERT INTO used(activityid, entityid) VALUES (%s,%s)"""
+    record_to_insert = (activityId, data.id)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
 
-async def capturePreprocessingActivity(
+def capturePreprocessingActivity(
     activityId, inputData: Data, outputData: Data, funcName
 ):
     global config
-    connection = await asyncpg.connect(config)
-    async with connection.transaction():
-        await connection.execute(
-            """ INSERT INTO preprocess(id, name) VALUES ($1,$2)""", activityId, funcName
-        )
+    connection = psycopg.connect(config, autocommit=True)
+    cursor = connection.cursor()
+    postgres_insert_query = """ INSERT INTO preprocess(id, name) VALUES (%s,%s)"""
+    record_to_insert = (activityId, funcName)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO data(id, name) VALUES ($1,$2)""",
-            outputData.id,
-            funcName + " output",
-        )
+    postgres_insert_query = """ INSERT INTO data(id, name) VALUES (%s,%s)"""
+    record_to_insert = (outputData.id, funcName + "output")
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
-            activityId,
-            outputData.id,
-        )
+    postgres_insert_query = (
+        """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+    )
+    record_to_insert = (activityId, outputData.id)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO used(activityid, entityid) VALUES ($1,$2)""",
-            activityId,
-            inputData.id,
-        )
-    await connection.close()
+    postgres_insert_query = """ INSERT INTO used(activityid, entityid) VALUES (%s,%s)"""
+    record_to_insert = (activityId, inputData.id)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
 
-async def captureEnsembleActivity(
+def captureEnsembleActivity(
     activityId, inputs: list[Prediction], output: Prediction, funcName
 ):
     global config
-    connection = await asyncpg.connect(config)
-    async with connection.transaction():
-        await connection.execute(
-            """ INSERT INTO ensemblefunction(id, name) VALUES ($1,$2)""",
-            activityId,
-            funcName,
-        )
+    connection = psycopg.connect(config, autocommit=True)
+    cursor = connection.cursor()
+    postgres_insert_query = """ INSERT INTO ensemblefunction(id, name) VALUES (%s,%s)"""
+    record_to_insert = (activityId, funcName)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO prediction(id, name) VALUES ($1,$2)""",
-            output.id,
-            funcName + "result",
-        )
+    postgres_insert_query = """ INSERT INTO prediction(id, name) VALUES (%s,%s)"""
+    record_to_insert = (output.id, funcName + "result")
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        await connection.execute(
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
-            activityId,
-            output.id,
-        )
+    postgres_insert_query = (
+        """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+    )
+    record_to_insert = (activityId, output.id)
+    cursor.execute(postgres_insert_query, record_to_insert)
 
-        for input in inputs:
-            await connection.execute(
-                """ INSERT INTO used(activityid, entityid) VALUES ($1,$2)""",
-                activityId,
-                input.id,
-            )
-    await connection.close()
+    for input in inputs:
+        postgres_insert_query = (
+            """ INSERT INTO used(activityid, entityid) VALUES (%s,%s)"""
+        )
+        record_to_insert = (activityId, input.id)
+        cursor.execute(postgres_insert_query, record_to_insert)
 
 
 def getModelId(modelName, param):
-    config = (
-        "user=nguu0123 password=nguu0123456 host=172.17.0.3 port=5432 dbname=nguu0123"
-    )
+    global config
     connection = psycopg.connect(config, autocommit=True)
     cursor = connection.cursor()
     postgreSQL_select_Query = (
         "select * from model where name = %s and parameter ->> 'param' = %s"
     )
     cursor.execute(postgreSQL_select_Query, (modelName, param))
-    modelRecords = cursor.fetchall()
+    mobile_records = cursor.fetchall()
     if cursor.rowcount == 0:
         modelId = str(uuid.uuid4())
         postgres_insert_query = (
@@ -253,7 +228,7 @@ def getModelId(modelName, param):
         record_to_insert = (modelId, modelName, json.dumps({"param": param}))
         cursor.execute(postgres_insert_query, record_to_insert)
         return modelId
-    return modelRecords[0][0]
+    return mobile_records[0][0]
 
 
 def report_proc_cpu(process):
@@ -295,6 +270,7 @@ def capture(activityType):
     def wrapper(func):
         @functools.wraps(func)
         def doFunc(*args, **kwargs):
+            start = time.time()
             startTime = datetime.now()
             beforeCpu = None
             beforeMem = None
@@ -310,8 +286,9 @@ def capture(activityType):
                 predictionMem = {"before": beforeMem, "after": get_proc_mem()}
                 data = kwargs["data"]
                 returnVal = Prediction(returnVal)
-                asyncio.new_event_loop().run_in_executor(None,
-                    capturePredictActivity(
+                async_thread = threading.Thread(
+                    target=capturePredictActivity,
+                    args= (
                         activityId,
                         startTime,
                         endTime,
@@ -322,28 +299,38 @@ def capture(activityType):
                         args[0].id,
                     )
                 )
+                async_thread.start()
             elif activityType == "assessDataQuality":
                 data = kwargs["data"]
                 returnVal = DataQualityReport(returnVal)
-                asyncio.new_event_loop().run_in_executor(None,
-                    captureAssessDataQualityActivity(activityId, data, returnVal)
+                calTime = time.time()
+                async_thread = threading.Thread(
+                    target=captureAssessDataQualityActivity,
+                    args=(activityId, data, returnVal
+                    )
                 )
+                async_thread.start()
             elif activityType == "preprocessing":
                 inputData = kwargs["data"]
                 returnVal = Data(returnVal)
-                asyncio.new_event_loop().run_in_executor(None,
-                    capturePreprocessingActivity(
-                        activityId, inputData, returnVal, funcName
+                calTime = time.time()
+                async_thread = threading.Thread(
+                    target=capturePreprocessingActivity,
+                    args=(activityId, inputData, returnVal, funcName
                     )
                 )
+                async_thread.start()
             elif activityType == "ensemble":
                 inputPredictions = kwargs["predictions"]
                 returnVal = Prediction(returnVal)
-                asyncio.new_event_loop().run_in_executor(None,
-                    captureEnsembleActivity(
-                        activityId, inputPredictions, returnVal, funcName
+                calTime = time.time()
+                async_thread = threading.Thread(
+                    target=captureEnsembleActivity,
+                    args=
+                        (activityId, inputPredictions, returnVal, funcName
                     )
                 )
+                async_thread.start()
             return returnVal
 
         return doFunc
@@ -362,12 +349,12 @@ def captureModel(func):
     return wrapper_init_model
 
 
-async def captureInputData(data):
-    returnData = Data(data)
+def captureInputData(data):
     global config
-    conn = await asyncpg.connect(config)
-    await conn.execute(
-        """ INSERT INTO data(id, name) VALUES ($1,$2)""", returnData.id, "input data"
-    )
-    await conn.close()
+    connection = psycopg.connect(config, autocommit=True)
+    cursor = connection.cursor()
+    returnData = Data(data)
+    postgres_insert_query = """ INSERT INTO data(id, name) VALUES (%s,%s)"""
+    record_to_insert = (returnData.id, "input data")
+    cursor.execute(postgres_insert_query, record_to_insert)
     return returnData

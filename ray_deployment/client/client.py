@@ -60,7 +60,7 @@ class Client:
         start_time = time.time()
         response = requests.post(url, files={"data": file, "file name": ran_file})
         response_time = time.time() - start_time
-        self.append_to_log([ran_file, response_time], "response_time_prov_sync" )
+        self.append_to_log([ran_file, response_time], "response_time_prov_async" )
         #prediction = response.json()
         #np_array = np.frombuffer(file, np.uint8)
         #im = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
@@ -99,6 +99,8 @@ class Client:
                     writer.writerow(self.request_log_comlums)
                 elif file_name == 'inference_log':
                     writer.writerow(self.inference_log_columns)
+                else: 
+                    writer.writerow(self.request_log_comlums)
         with open(path, "a") as f_object:
             writer_object = csv.writer(f_object)
             writer_object.writerow(data)
@@ -108,9 +110,9 @@ if __name__ == '__main__':
     client = Client(connector_config)
     i = 0 
     try:
-        while i < 1000:
-            client.send_message()
-            i += 1
+         while i < 1000:
+             client.send_message()
+             i += 1
         #client.send_message()
     except KeyboardInterrupt:
         print('interrupted!')

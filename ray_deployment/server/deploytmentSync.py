@@ -30,7 +30,7 @@ from ray.serve.http_adapters import json_request
 from starlette.requests import Request
 from yolov5.yolov5 import Yolo5
 from yolov8.yolov8 import Yolo8
-from prov.prov_function import captureInputData, capture, captureModel 
+from prov.prov_function_sync import captureInputData, capture, captureModel 
 
 @ray.remote
 @capture(activityType='preprocessing')
