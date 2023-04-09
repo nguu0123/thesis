@@ -5,9 +5,18 @@ import functools
 import asyncpg
 import os
 import psutil
+import psycopg
+import asyncio
+import asyncpg
 from datetime import datetime
 from qoa4ml.utils import load_config, get_proc_cpu, get_proc_cpu
 from torch.nn.functional import linear
+from concurrent.futures import ThreadPoolExecutor
+import nest_asyncio
+
+nest_asyncio.apply()
+config = "postgresql://nguu0123:nguu0123456@172.17.0.3:5432/nguu0123"
+
 
 class Data:
     def __init__(self, data, id=None, name=None):
@@ -67,153 +76,185 @@ class PredictionQuality:
             return DataQualityReport(returnData, self.id)
 
 
-class LineageManager:
-    def __init__(self) -> None:
-        config = "user=nguu0123 password=nguu0123456 host=172.17.0.3 port=5432 dbname=nguu0123"
-        self.connection = psycopg.connect(config, autocommit=True)
-        self.cursor = self.connection.cursor()
-
-    def capturePredictActivity(
-        self,
-        activityId,
-        startTime,
-        endTime,
-        data: Data,
-        prediction: Prediction,
-        predictionCpu,
-        predictionMem,
-        modelId
-    ):
-        postgres_insert_query = (
-            """ INSERT INTO predict (id, start_time, end_time) VALUES (%s,%s,%s)"""
+async def capturePredictActivity(
+    activityId,
+    startTime,
+    endTime,
+    data: Data,
+    prediction: Prediction,
+    predictionCpu,
+    predictionMem,
+    modelId,
+):
+    global config
+    connection = await asyncpg.connect(config)
+    async with connection.transaction():
+        await connection.execute(
+            """ INSERT INTO predict (id, start_time, end_time) VALUES ($1,$2,$3)""",
+            activityId,
+            startTime,
+            endTime,
         )
-        record_to_insert = (activityId, startTime, endTime)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = """ INSERT INTO prediction (id, name) VALUES (%s,%s)"""
-        record_to_insert = (prediction.id, prediction.name)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
-
-        postgres_insert_query = (
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO prediction (id, name) VALUES ($1,$2)""",
+            prediction.id,
+            prediction.name,
         )
-        record_to_insert = (activityId, prediction.id)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = (
-            """ INSERT INTO used(activityid, entityid) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
+            activityId,
+            prediction.id,
         )
-        record_to_insert = (activityId, data.id)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
+
+        await connection.execute(
+            """ INSERT INTO used(activityid, entityid) VALUES ($1,$2)""",
+            activityId,
+            data.id,
+        )
 
         predictionQuality = {"cpu": predictionCpu, "mem": predictionMem}
         if "QoA" in prediction.data:
             predictionQuality["QoA"] = prediction.data["QoA"]
         predictionQualityId = str(uuid.uuid4())
-        postgres_insert_query = (
-            """ INSERT INTO predictionquality(id, value) VALUES (%s,%s)"""
+
+        await connection.execute(
+            """ INSERT INTO predictionquality(id, value) VALUES ($1,$2)""",
+            predictionQualityId,
+            json.dumps(predictionQuality),
         )
-        record_to_insert = (predictionQualityId, json.dumps(predictionQuality))
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = (
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
+            activityId,
+            predictionQualityId,
         )
-        record_to_insert = (activityId, predictionQualityId)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = (
-            """ INSERT INTO wasassociatedwith(activityid, agentid) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO wasassociatedwith(activityid, agentid) VALUES ($1,$2)""",
+            activityId,
+            modelId,
         )
-        record_to_insert = (activityId, modelId)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
+    await connection.close()
 
-    def captureAssessDataQualityActivity(
-        self, activityId, data: Data, dataQualityReport: DataQualityReport
-    ):
-        postgres_insert_query = (
-            """ INSERT INTO dataqualityreport(id, value) VALUES (%s,%s)"""
+
+async def captureAssessDataQualityActivity(
+    activityId, data: Data, dataQualityReport: DataQualityReport
+):
+    global config
+    connection = await asyncpg.connect(config)
+    async with connection.transaction():
+        await connection.execute(
+            """ INSERT INTO dataqualityreport(id, value) VALUES ($1,$2)""",
+            dataQualityReport.id,
+            json.dumps(dataQualityReport.data),
         )
-        record_to_insert = (dataQualityReport.id, json.dumps(dataQualityReport.data))
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = (
-            """ INSERT INTO assessdataquality(id, name) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO assessdataquality(id, name) VALUES ($1,$2)""",
+            activityId,
+            "assess data quality",
         )
-        record_to_insert = (activityId, "assess data quality")
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = (
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
+            activityId,
+            dataQualityReport.id,
         )
-        record_to_insert = (activityId, dataQualityReport.id)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = (
-            """ INSERT INTO used(activityid, entityid) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO used(activityid, entityid) VALUES ($1,$2)""",
+            activityId,
+            data.id,
         )
-        record_to_insert = (activityId, data.id)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
+    await connection.close()
 
-    def capturePreprocessingActivity(
-        self, activityId, inputData: Data, outputData: Data, funcName
-    ):
-        postgres_insert_query = """ INSERT INTO preprocess(id, name) VALUES (%s,%s)"""
-        record_to_insert = (activityId, funcName)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = """ INSERT INTO data(id, name) VALUES (%s,%s)"""
-        record_to_insert = (outputData.id, funcName + "output")
-        self.cursor.execute(postgres_insert_query, record_to_insert)
-
-        postgres_insert_query = (
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+async def capturePreprocessingActivity(
+    activityId, inputData: Data, outputData: Data, funcName
+):
+    global config
+    connection = await asyncpg.connect(config)
+    async with connection.transaction():
+        await connection.execute(
+            """ INSERT INTO preprocess(id, name) VALUES ($1,$2)""", activityId, funcName
         )
-        record_to_insert = (activityId, outputData.id)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = (
-            """ INSERT INTO used(activityid, entityid) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO data(id, name) VALUES ($1,$2)""",
+            outputData.id,
+            funcName + " output",
         )
-        record_to_insert = (activityId, inputData.id)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-    def captureEnsembleActivity(
-        self, activityId, inputs: list[Prediction], output: Prediction, funcName
-    ):
-        postgres_insert_query = (
-            """ INSERT INTO ensemblefunction(id, name) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
+            activityId,
+            outputData.id,
         )
-        record_to_insert = (activityId, funcName)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
 
-        postgres_insert_query = """ INSERT INTO prediction(id, name) VALUES (%s,%s)"""
-        record_to_insert = (output.id, funcName + "result")
-        self.cursor.execute(postgres_insert_query, record_to_insert)
-
-        postgres_insert_query = (
-            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+        await connection.execute(
+            """ INSERT INTO used(activityid, entityid) VALUES ($1,$2)""",
+            activityId,
+            inputData.id,
         )
-        record_to_insert = (activityId, output.id)
-        self.cursor.execute(postgres_insert_query, record_to_insert)
+    await connection.close()
+
+
+async def captureEnsembleActivity(
+    activityId, inputs: list[Prediction], output: Prediction, funcName
+):
+    global config
+    connection = await asyncpg.connect(config)
+    async with connection.transaction():
+        await connection.execute(
+            """ INSERT INTO ensemblefunction(id, name) VALUES ($1,$2)""",
+            activityId,
+            funcName,
+        )
+
+        await connection.execute(
+            """ INSERT INTO prediction(id, name) VALUES ($1,$2)""",
+            output.id,
+            funcName + "result",
+        )
+
+        await connection.execute(
+            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES ($1,$2)""",
+            activityId,
+            output.id,
+        )
 
         for input in inputs:
-            postgres_insert_query = (
-                """ INSERT INTO used(activityid, entityid) VALUES (%s,%s)"""
+            await connection.execute(
+                """ INSERT INTO used(activityid, entityid) VALUES ($1,$2)""",
+                activityId,
+                input.id,
             )
-            record_to_insert = (activityId, input.id)
-            self.cursor.execute(postgres_insert_query, record_to_insert)
-    def getModelId(self, modelName, param):
-        postgreSQL_select_Query = "select * from model where name = %s and parameter ->> 'param' = %s"
-        self.cursor.execute(postgreSQL_select_Query, (modelName, param))
-        mobile_records = self.cursor.fetchall()
-        if self.cursor.rowcount == 0:
-             modelId = str(uuid.uuid4())
-             postgres_insert_query = """ INSERT INTO model(id, name, parameter) VALUES (%s,%s,%s)"""
-             record_to_insert = (modelId, modelName, json.dumps({"param": param}))
-             self.cursor.execute(postgres_insert_query, record_to_insert)
-             return modelId
-        return mobile_records[0][0]
+    await connection.close()
+
+
+def getModelId(modelName, param):
+    config = (
+        "user=nguu0123 password=nguu0123456 host=172.17.0.3 port=5432 dbname=nguu0123"
+    )
+    connection = psycopg.connect(config, autocommit=True)
+    cursor = connection.cursor()
+    postgreSQL_select_Query = (
+        "select * from model where name = %s and parameter ->> 'param' = %s"
+    )
+    cursor.execute(postgreSQL_select_Query, (modelName, param))
+    modelRecords = cursor.fetchall()
+    if cursor.rowcount == 0:
+        modelId = str(uuid.uuid4())
+        postgres_insert_query = (
+            """ INSERT INTO model(id, name, parameter) VALUES (%s,%s,%s)"""
+        )
+        record_to_insert = (modelId, modelName, json.dumps({"param": param}))
+        cursor.execute(postgres_insert_query, record_to_insert)
+        return modelId
+    return modelRecords[0][0]
+
 
 def report_proc_cpu(process):
     report = {}
@@ -250,8 +291,7 @@ def get_proc_mem(pid=None):
     return report_proc_mem(process)
 
 
-
-def capture(activityType): 
+def capture(activityType):
     def wrapper(func):
         @functools.wraps(func)
         def doFunc(*args, **kwargs):
@@ -265,39 +305,44 @@ def capture(activityType):
             funcName = func.__name__
             endTime = datetime.now()
             activityId = str(uuid.uuid4())
-            lineageManager = LineageManager()
             if activityType == "predict":
                 predictionCpu = {"before": beforeCpu, "after": get_proc_cpu()}
                 predictionMem = {"before": beforeMem, "after": get_proc_mem()}
                 data = kwargs["data"]
                 returnVal = Prediction(returnVal)
-                lineageManager.capturePredictActivity(
-                    activityId,
-                    startTime,
-                    endTime,
-                    data,
-                    returnVal,
-                    predictionCpu,
-                    predictionMem,
-                    args[0].id
+                asyncio.new_event_loop().run_in_executor(None,
+                    capturePredictActivity(
+                        activityId,
+                        startTime,
+                        endTime,
+                        data,
+                        returnVal,
+                        predictionCpu,
+                        predictionMem,
+                        args[0].id,
+                    )
                 )
             elif activityType == "assessDataQuality":
                 data = kwargs["data"]
                 returnVal = DataQualityReport(returnVal)
-                lineageManager.captureAssessDataQualityActivity(
-                    activityId, data, returnVal
+                asyncio.new_event_loop().run_in_executor(None,
+                    captureAssessDataQualityActivity(activityId, data, returnVal)
                 )
             elif activityType == "preprocessing":
                 inputData = kwargs["data"]
                 returnVal = Data(returnVal)
-                lineageManager.capturePreprocessingActivity(
-                    activityId, inputData, returnVal, funcName
+                asyncio.new_event_loop().run_in_executor(None,
+                    capturePreprocessingActivity(
+                        activityId, inputData, returnVal, funcName
+                    )
                 )
             elif activityType == "ensemble":
                 inputPredictions = kwargs["predictions"]
                 returnVal = Prediction(returnVal)
-                lineageManager.captureEnsembleActivity(
-                    activityId, inputPredictions, returnVal, funcName
+                asyncio.new_event_loop().run_in_executor(None,
+                    captureEnsembleActivity(
+                        activityId, inputPredictions, returnVal, funcName
+                    )
                 )
             return returnVal
 
@@ -310,18 +355,19 @@ def captureModel(func):
     @functools.wraps(func)
     def wrapper_init_model(*args, **kwargs):
         model = args[0]
-        lineageManager = LineageManager()
         param = kwargs["param"]
-        model.id = lineageManager.getModelId(model.__class__.__name__, param)
+        model.id = getModelId(model.__class__.__name__, param)
         return func(*args, **kwargs)
 
     return wrapper_init_model
 
 
-def captureInputData(data): 
+async def captureInputData(data):
     returnData = Data(data)
-    lineageManager = LineageManager()
-    postgres_insert_query = """ INSERT INTO data(id, name) VALUES (%s,%s)"""
-    record_to_insert = (returnData.id, "input data")
-    lineageManager.cursor.execute(postgres_insert_query, record_to_insert)
+    global config
+    conn = await asyncpg.connect(config)
+    await conn.execute(
+        """ INSERT INTO data(id, name) VALUES ($1,$2)""", returnData.id, "input data"
+    )
+    await conn.close()
     return returnData

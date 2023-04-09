@@ -59,10 +59,12 @@ class Client:
         file = open("./images/" + ran_class + "/" + ran_file, "rb").read()
         start_time = time.time()
         response = requests.post(url, files={"data": file, "file name": ran_file})
-        prediction = response.json()
-        np_array = np.frombuffer(file, np.uint8)
-        im = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
-        height, width, _ = im.shape
+        response_time = time.time() - start_time
+        self.append_to_log([ran_file, response_time], "response_time_prov_sync" )
+        #prediction = response.json()
+        #np_array = np.frombuffer(file, np.uint8)
+        #im = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+        #height, width, _ = im.shape
         #self.monitor(time.time() - start_time, prediction["prediction"], ran_file, ran_class, height, width)
 
     def monitor(self, response_time, inference_result, image_id, true_class, image_height, image_width):

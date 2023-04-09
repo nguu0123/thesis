@@ -30,7 +30,7 @@ from ray.serve.http_adapters import json_request
 from starlette.requests import Request
 from yolov5.yolov5 import Yolo5
 from yolov8.yolov8 import Yolo8
-from prov.prov_function import LineageManager, captureInputData, capture, captureModel 
+from prov.prov_function import captureInputData, capture, captureModel 
 
 @ray.remote
 @capture(activityType='preprocessing')
@@ -116,7 +116,7 @@ class Ensemble_ML:
     async def inference(self, data):
         np_array = np.frombuffer(data, np.uint8)
         im = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
-        im = captureInputData(im)
+        im =  captureInputData(im)
         self.assessDataQuality(data=im)
         en_im = enhance_image.remote(data=im)
         response = {}
