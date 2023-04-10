@@ -6,7 +6,7 @@ from memory_profiler import profile
 from qoa4ml.connector.amqp_connector import Amqp_Connector
 from qoa4ml.collector.amqp_collector import Amqp_Collector
 from qoa4ml.utils import load_config
-
+random.seed(1234)
 parser = argparse.ArgumentParser(description="Data processing")
 parser.add_argument("--th", help="number concurrent thread", default=1)
 parser.add_argument("--sl", help="time sleep", default=-1.0)
@@ -50,7 +50,7 @@ class Client:
         # self.amqp_connector = Amqp_Connector(connector_config, log)
         self.correct_detect = 0
         self.request_sent = 0 
-        self.request_log_comlums   = ["Image ID", "Response time"]
+        self.request_log_comlums   = ["Image ID", "Response time", "correctly_detect", "true_class"]
         self.inference_log_columns = ["Image ID", "Model", "Class", "Correctly detect", "Number of objects detected", 'Width', 
                                       'Height', 'Object width', 'Object height', 'Object to Image percentage']
     def send_message(self):
@@ -60,8 +60,20 @@ class Client:
         start_time = time.time()
         response = requests.post(url, files={"data": file, "file name": ran_file})
         response_time = time.time() - start_time
-        self.append_to_log([ran_file, response_time], "response_time_prov_async" )
-        #prediction = response.json()
+        prediction = response.json()
+        correctly_detect = 0
+        for model in prediction["prediction"].keys():
+            if prediction["prediction"][model]:
+                data = prediction["prediction"][model] 
+                object_num = 0
+                for detected_object in data:
+                    cur_object = detected_object["object_{}".format(object_num)]
+                    if isinstance(cur_object, list):
+                        cur_object = cur_object[0]
+                    if cur_object["name"] == ran_class: 
+                        correctly_detect = 1
+                    object_num += 1
+        self.append_to_log([ran_file,response_time], "response_time_original" )
         #np_array = np.frombuffer(file, np.uint8)
         #im = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
         #height, width, _ = im.shape

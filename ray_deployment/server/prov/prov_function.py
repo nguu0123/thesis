@@ -7,19 +7,21 @@ import os
 import psutil
 import psycopg
 import threading
+import tracemalloc
 from datetime import datetime
 from qoa4ml.utils import load_config, get_proc_cpu, get_proc_cpu, thread
 from torch.nn.functional import linear
 
 
 config = (
-        "user=nguu0123 password=nguu0123456 host=172.17.0.2 port=5432 dbname=nguu0123"
+        "user=nguu0123 password=nguu0123456 host=172.17.0.3 port=5432 dbname=nguu0123"
     )
 class Data:
-    def __init__(self, data, id=None, name=None):
+    def __init__(self, data, id=None, name=None, requestId=None):
         self.data = data
         self.id = str(uuid.uuid4()) if id is None else id
         self.name = "test"
+        self.requestId = requestId
 
     def getAs(self, *args):
         if type(self.data) == dict:
@@ -31,10 +33,11 @@ class Data:
 
 
 class Prediction:
-    def __init__(self, prediction, id=None):
+    def __init__(self, prediction, id=None, requestId=None):
         self.data = prediction
         self.id = str(uuid.uuid4()) if id is None else id
         self.name = "test"
+        self.requestId = requestId
 
     def getAs(self, *args):
         if type(self.data) == dict:
@@ -46,9 +49,10 @@ class Prediction:
 
 
 class DataQualityReport:
-    def __init__(self, report, id=None):
+    def __init__(self, report, id=None, requestId=None):
         self.data = report
         self.id = str(uuid.uuid4()) if id is None else id
+        self.requestId = requestId
 
     def getAs(self, *args):
         if type(self.data) == dict:
@@ -60,9 +64,10 @@ class DataQualityReport:
 
 
 class PredictionQuality:
-    def __init__(self, metrics, id=None):
+    def __init__(self, metrics, id=None, requestId=None):
         self.data = metrics
         self.id = str(uuid.uuid4()) if id is None else id
+        self.requestId = requestId
 
     def getAs(self, *args):
         if type(self.data) == dict:
@@ -87,13 +92,13 @@ def capturePredictActivity(
     connection = psycopg.connect(config, autocommit=True)
     cursor = connection.cursor()
     postgres_insert_query = (
-        """ INSERT INTO predict (id, start_time, end_time) VALUES (%s,%s,%s)"""
+        """ INSERT INTO predict (id, start_time, end_time, requestId) VALUES (%s,%s,%s,%s)"""
     )
-    record_to_insert = (activityId, startTime, endTime)
+    record_to_insert = (activityId, startTime, endTime, data.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
-    postgres_insert_query = """ INSERT INTO prediction (id, name) VALUES (%s,%s)"""
-    record_to_insert = (prediction.id, prediction.name)
+    postgres_insert_query = """ INSERT INTO prediction (id, name, requestId) VALUES (%s,%s,%s)"""
+    record_to_insert = (prediction.id, prediction.name, data.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
     postgres_insert_query = (
@@ -111,9 +116,9 @@ def capturePredictActivity(
         predictionQuality["QoA"] = prediction.data["QoA"]
     predictionQualityId = str(uuid.uuid4())
     postgres_insert_query = (
-        """ INSERT INTO predictionquality(id, value) VALUES (%s,%s)"""
+        """ INSERT INTO predictionquality(id, value, requestId) VALUES (%s,%s,%s)"""
     )
-    record_to_insert = (predictionQualityId, json.dumps(predictionQuality))
+    record_to_insert = (predictionQualityId, json.dumps(predictionQuality), data.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
     postgres_insert_query = (
@@ -136,15 +141,15 @@ def captureAssessDataQualityActivity(
     connection = psycopg.connect(config, autocommit=True)
     cursor = connection.cursor()
     postgres_insert_query = (
-        """ INSERT INTO dataqualityreport(id, value) VALUES (%s,%s)"""
+        """ INSERT INTO dataqualityreport(id, value, requestId) VALUES (%s,%s,%s)"""
     )
-    record_to_insert = (dataQualityReport.id, json.dumps(dataQualityReport.data))
+    record_to_insert = (dataQualityReport.id, json.dumps(dataQualityReport.data), data.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
     postgres_insert_query = (
-        """ INSERT INTO assessdataquality(id, name) VALUES (%s,%s)"""
+        """ INSERT INTO assessdataquality(id, name, requestId) VALUES (%s,%s,%s)"""
     )
-    record_to_insert = (activityId, "assess data quality")
+    record_to_insert = (activityId, "assess data quality", data.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
     postgres_insert_query = (
@@ -164,12 +169,12 @@ def capturePreprocessingActivity(
     global config
     connection = psycopg.connect(config, autocommit=True)
     cursor = connection.cursor()
-    postgres_insert_query = """ INSERT INTO preprocess(id, name) VALUES (%s,%s)"""
-    record_to_insert = (activityId, funcName)
+    postgres_insert_query = """ INSERT INTO preprocess(id, name, requestId) VALUES (%s,%s,%s)"""
+    record_to_insert = (activityId, funcName, inputData.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
-    postgres_insert_query = """ INSERT INTO data(id, name) VALUES (%s,%s)"""
-    record_to_insert = (outputData.id, funcName + "output")
+    postgres_insert_query = """ INSERT INTO data(id, name, requestId) VALUES (%s,%s,%s)"""
+    record_to_insert = (outputData.id, funcName + " output", inputData.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
     postgres_insert_query = (
@@ -189,12 +194,12 @@ def captureEnsembleActivity(
     global config
     connection = psycopg.connect(config, autocommit=True)
     cursor = connection.cursor()
-    postgres_insert_query = """ INSERT INTO ensemblefunction(id, name) VALUES (%s,%s)"""
-    record_to_insert = (activityId, funcName)
+    postgres_insert_query = """ INSERT INTO ensemblefunction(id, name, requestId) VALUES (%s,%s,%s)"""
+    record_to_insert = (activityId, funcName, output.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
-    postgres_insert_query = """ INSERT INTO prediction(id, name) VALUES (%s,%s)"""
-    record_to_insert = (output.id, funcName + "result")
+    postgres_insert_query = """ INSERT INTO prediction(id, name, requestId) VALUES (%s,%s,%s)"""
+    record_to_insert = (output.id, funcName + "result", output.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
     postgres_insert_query = (
@@ -270,22 +275,23 @@ def capture(activityType):
     def wrapper(func):
         @functools.wraps(func)
         def doFunc(*args, **kwargs):
-            start = time.time()
             startTime = datetime.now()
             beforeCpu = None
-            beforeMem = None
+            predictionMem = None
             if activityType == "predict":
                 beforeCpu = get_proc_cpu()
-                beforeMem = get_proc_mem()
+                tracemalloc.start()
             returnVal = func(*args, **kwargs)
+            if activityType == "predict":
+                predictionMem = tracemalloc.get_traced_memory()
+                predictionCpu = {"before": beforeCpu, "after": get_proc_cpu()}
+                tracemalloc.stop()
             funcName = func.__name__
             endTime = datetime.now()
             activityId = str(uuid.uuid4())
             if activityType == "predict":
-                predictionCpu = {"before": beforeCpu, "after": get_proc_cpu()}
-                predictionMem = {"before": beforeMem, "after": get_proc_mem()}
                 data = kwargs["data"]
-                returnVal = Prediction(returnVal)
+                returnVal = Prediction(returnVal,None, data.requestId)
                 async_thread = threading.Thread(
                     target=capturePredictActivity,
                     args= (
@@ -302,8 +308,7 @@ def capture(activityType):
                 async_thread.start()
             elif activityType == "assessDataQuality":
                 data = kwargs["data"]
-                returnVal = DataQualityReport(returnVal)
-                calTime = time.time()
+                returnVal = DataQualityReport(returnVal, data.requestId)
                 async_thread = threading.Thread(
                     target=captureAssessDataQualityActivity,
                     args=(activityId, data, returnVal
@@ -312,8 +317,7 @@ def capture(activityType):
                 async_thread.start()
             elif activityType == "preprocessing":
                 inputData = kwargs["data"]
-                returnVal = Data(returnVal)
-                calTime = time.time()
+                returnVal = Data(returnVal,None, None, inputData.requestId)
                 async_thread = threading.Thread(
                     target=capturePreprocessingActivity,
                     args=(activityId, inputData, returnVal, funcName
@@ -322,8 +326,7 @@ def capture(activityType):
                 async_thread.start()
             elif activityType == "ensemble":
                 inputPredictions = kwargs["predictions"]
-                returnVal = Prediction(returnVal)
-                calTime = time.time()
+                returnVal = Prediction(returnVal, None, inputPredictions[0].requestId)
                 async_thread = threading.Thread(
                     target=captureEnsembleActivity,
                     args=
@@ -353,8 +356,8 @@ def captureInputData(data):
     global config
     connection = psycopg.connect(config, autocommit=True)
     cursor = connection.cursor()
-    returnData = Data(data)
-    postgres_insert_query = """ INSERT INTO data(id, name) VALUES (%s,%s)"""
-    record_to_insert = (returnData.id, "input data")
+    returnData = Data(data, None, None, str(uuid.uuid4()))
+    postgres_insert_query = """ INSERT INTO data(id, name, requestId) VALUES (%s,%s,%s)"""
+    record_to_insert = (returnData.id, "input data", returnData.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
     return returnData

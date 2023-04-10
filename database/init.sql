@@ -3,24 +3,28 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS Data (
   id uuid DEFAULT uuid_generate_v4 (),
   name VARCHAR,
+  requestId VARCHAR,
   PRIMARY KEY(id)
 );
 
 CREATE TABLE IF NOT EXISTS Prediction (
   id uuid DEFAULT uuid_generate_v4 (),
   name VARCHAR,
+  requestId VARCHAR,
   PRIMARY KEY(id)
 );
 
 CREATE TABLE IF NOT EXISTS DataQualityReport (
   id uuid DEFAULT uuid_generate_v4 (),
   value json  NOT NULL,
+  requestId VARCHAR,
   PRIMARY KEY(id)
 );
 
 CREATE TABLE IF NOT EXISTS PredictionQuality (
   id uuid DEFAULT uuid_generate_v4 (),
   value json  NOT NULL,
+  requestId VARCHAR,
   PRIMARY KEY(id)
 );
 -- Create activity table
@@ -29,24 +33,28 @@ CREATE TABLE IF NOT EXISTS Predict (
   id uuid DEFAULT uuid_generate_v4 (),
   start_time timestamp, 
   end_time timestamp,
+  requestId VARCHAR,
   PRIMARY KEY(id)
 );
 
 CREATE TABLE IF NOT EXISTS AssessDataQuality (
   id uuid DEFAULT uuid_generate_v4 (),
   name VARCHAR,
+  requestId VARCHAR,
   PRIMARY KEY(id)
 );
 
 CREATE TABLE IF NOT EXISTS Preprocess (
   id uuid DEFAULT uuid_generate_v4 (),
   name VARCHAR,
+  requestId VARCHAR,
   PRIMARY KEY(id)
 );
 
 CREATE TABLE IF NOT EXISTS EnsembleFunction (
   id uuid DEFAULT uuid_generate_v4 (),
   name VARCHAR,
+  requestId VARCHAR,
   PRIMARY KEY(id)
 );
 -- Create agent table

@@ -130,6 +130,7 @@ class Ensemble_ML:
             yl8.data["model_name"]: yl8.data["prediction"][yl8.data["model_name"]],
         }
         response["image"] = yl8.data["image"]
+        response['requestId'] = im.requestId
         return response
     @capture(activityType='assessDataQuality')
     def assessDataQuality(self, data):
@@ -157,6 +158,7 @@ class MostBasicIngress:
         time_stamp = datetime.fromtimestamp(time.time())
         files = await request.form()
         data = await files["data"].read()
+        request_id = str(uuid.uuid4())
         image_id = await files["file name"].read()
         response = await self.ensemble.inference.remote(data)
         response = ray.get(response)
