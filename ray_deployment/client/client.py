@@ -6,12 +6,14 @@ from memory_profiler import profile
 from qoa4ml.connector.amqp_connector import Amqp_Connector
 from qoa4ml.collector.amqp_collector import Amqp_Collector
 from qoa4ml.utils import load_config
-random.seed(1234)
+import requests
+from concurrent.futures import ThreadPoolExecutor
+import time
+#random.seed(1234)
 parser = argparse.ArgumentParser(description="Data processing")
 parser.add_argument("--th", help="number concurrent thread", default=1)
 parser.add_argument("--sl", help="time sleep", default=-1.0)
 args = parser.parse_args()
-concurrent = int(args.th)
 time_sleep = float(args.sl)
 # url = 'http://192.168.1.148:5000/inference_aaltosea'
 url = "http://127.0.0.1:8000/"
@@ -46,17 +48,17 @@ def sender(num_thread):
 # 1 Thread
 
 class Client:
-    def __init__(self, connector_config: dict, log: bool = False):
+    def __init__(self):
         # self.amqp_connector = Amqp_Connector(connector_config, log)
         self.correct_detect = 0
         self.request_sent = 0 
-        self.request_log_comlums   = ["Image ID", "Response time", "correctly_detect", "true_class"]
+        self.request_log_comlums   = ["Image ID", "Model", "correctly_detect", "true_class"]
         self.inference_log_columns = ["Image ID", "Model", "Class", "Correctly detect", "Number of objects detected", 'Width', 
                                       'Height', 'Object width', 'Object height', 'Object to Image percentage']
     def send_message(self):
-        ran_class = random.choice(os.listdir("./images/"))
-        ran_file = random.choice(os.listdir("./images/{}".format(ran_class)))
-        file = open("./images/" + ran_class + "/" + ran_file, "rb").read()
+        ran_class = random.choice(os.listdir("./images_with_noise_04/"))
+        ran_file = random.choice(os.listdir("./images_with_noise_04/{}".format(ran_class)))
+        file = open("./images_with_noise_04/" + ran_class + "/" + ran_file, "rb").read()
         start_time = time.time()
         response = requests.post(url, files={"data": file, "file name": ran_file})
         response_time = time.time() - start_time
@@ -73,12 +75,37 @@ class Client:
                     if cur_object["name"] == ran_class: 
                         correctly_detect = 1
                     object_num += 1
-        self.append_to_log([ran_file,response_time], "response_time_original" )
+        self.append_to_log([ran_file, response_time, correctly_detect, ran_class], "accuracy_without_noise_04" )
         #np_array = np.frombuffer(file, np.uint8)
         #im = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
         #height, width, _ = im.shape
         #self.monitor(time.time() - start_time, prediction["prediction"], ran_file, ran_class, height, width)
-
+    def send_message_with_models(self):
+        ran_class = random.choice(os.listdir("./images_in_bright/"))
+        ran_file = random.choice(os.listdir("./images_in_bright/{}".format(ran_class)))
+        file = open("./images_in_bright/" + ran_class + "/" + ran_file, "rb").read()
+        start_time = time.time()
+        print("./images_in_bright/" + ran_class + "/" + ran_file)
+        response = requests.post(url, files={"data": file, "file name": ran_file})
+        response_time = time.time() - start_time
+        prediction = response.json()
+        image = np.asarray((prediction["image"]))
+        cv2.imshow("lable", image.astype(np.uint8))
+        cv2.waitKey(2000)
+        time.sleep(10000)
+        for model in prediction["prediction"].keys():
+            correctly_detect = 0
+            if prediction["prediction"][model]:
+                data = prediction["prediction"][model] 
+                object_num = 0
+                for detected_object in data:
+                    cur_object = detected_object["object_{}".format(object_num)]
+                    if isinstance(cur_object, list):
+                        cur_object = cur_object[0]
+                    if cur_object["name"] == ran_class: 
+                        correctly_detect = 1
+                    object_num += 1
+            #self.append_to_log([ran_file, model, correctly_detect, ran_class], "accuracy_with_bright" )
     def monitor(self, response_time, inference_result, image_id, true_class, image_height, image_width):
         for model in inference_result.keys():
             if inference_result[model]:
@@ -117,15 +144,54 @@ class Client:
             writer_object = csv.writer(f_object)
             writer_object.writerow(data)
 
+num_requests = 1000
+# Define a function to send requests
+def send_request():
+    for i in range(1):
+        try:
+            ran_class = random.choice(os.listdir("./images/"))
+            ran_file = random.choice(os.listdir("./images/{}".format(ran_class)))
+            file = open("./images/" + ran_class + "/" + ran_file, "rb").read()
+            response = requests.post(url, files={"data": file, "file name": ran_file})
+        except Exception as e:
+            print(f'Error sending request {i+1} to {url}: {e}')
+
+def send_requests(rps, duration):
+
+    def send_request():
+        ran_class = random.choice(os.listdir("./images_with_noise/"))
+        ran_file = random.choice(os.listdir("./images_with_noise/{}".format(ran_class)))
+        file = open("./images/" + ran_class + "/" + ran_file, "rb").read()
+        response = requests.post(url, files={"data": file, "file name": ran_file})
+
+    start_time = time.time()
+    interval = 1 / rps
+    total_requests = rps * duration
+
+    # Use ThreadPoolExecutor to limit concurrent threads
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit tasks to the executor
+        futures = [executor.submit(send_request) for _ in range(total_requests)]
+
+    end_time = time.time()
+    total_time = end_time - start_time
+
+    print(f'Total Requests: {total_requests}')
+    print(f'Total Time (seconds): {total_time}')
+    print(f'Requests per Second: {total_requests / total_time}')
+
 if __name__ == '__main__':
-    connector_config = load_config("./client_connector.json")
-    client = Client(connector_config)
-    i = 0 
+## Use ThreadPoolExecutor to send requests concurrently
+    #send_requests(30,20) 
+    #send_request()
+    # Wait for all tasks to complete
+    i = 0
+    client = Client()
     try:
-         while i < 1000:
-             client.send_message()
+        while i < 1:
+             client.send_message_with_models()
              i += 1
-        #client.send_message()
+        client.send_message()
     except KeyboardInterrupt:
         print('interrupted!')
 # Multi-thrad

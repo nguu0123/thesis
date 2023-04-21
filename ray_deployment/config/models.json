@@ -1,4 +1,4 @@
 {
-    "yolo8": "yolov8n",
-    "yolo5": "yolov5s"
+  "yolo8": "yolov8n",
+  "yolo5": "yolov5n"
 }

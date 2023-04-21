@@ -43,18 +43,34 @@ def enhance_image(data):
 @ray.remote
 @capture(activityType='ensemble')
 def mean_aggregate(predictions):
-    agg_prediction = aggregation.agg_mean(reduce(lambda a, b: a.data | b.data, predictions))
-    return agg_prediction
-
+    agg_prediction = aggregation.agg_mean(list(map(lambda x: x.data, predictions)))
+    report = {}
+    objectDetected = []
+    #for curObject in agg_prediction[0]:
+    #    objectDetected.append((agg_prediction[0][curObject]["name"], agg_prediction[0][curObject]["confidence"]))
+    #report["object detected"] = objectDetected
+    return {"prediction": agg_prediction, "QoA" : report}
 
 @ray.remote
 @capture(activityType='ensemble')
 def max_aggregate(predictions):
     agg_prediction = aggregation.agg_max(reduce(lambda a, b: a.data | b.data, predictions))
-    return agg_prediction
+    report = {}
+    objectDetected = []
+    #for curObject in agg_prediction[0]:
+    #    objectDetected.append((agg_prediction[0][curObject]["name"], agg_prediction[0][curObject]["confidence"]))
+    #report["object detected"] = objectDetected
+    return {"prediction": agg_prediction, "QoA" : report}
 
 
-@serve.deployment
+@serve.deployment(
+    autoscaling_config={
+        "min_replicas": 1,
+        "max_replicas": 3,
+        "target_num_ongoing_requests_per_replica": 3,
+        "upscale_delay_s": 10
+    }
+)
 class Yolo8Inference:
     @captureModel
     def __init__(self, param):
@@ -68,6 +84,7 @@ class Yolo8Inference:
 
     def extractQoA(self, prediction):
         report = {}
+        objectDetected = []
         for model in prediction.keys():
             if prediction[model]:
                 data = prediction[model] 
@@ -76,12 +93,19 @@ class Yolo8Inference:
                     cur_object = detected_object["object_{}".format(object_num)]
                     if isinstance(cur_object, list):
                         cur_object = cur_object[0]
-                    report[cur_object["name"]] =  cur_object["confidence"]
+                    objectDetected.append((cur_object["name"], cur_object["confidence"]))    
                     object_num += 1
-                report["number of object"] = object_num
+        report["object detected"] = objectDetected
         return report
 
-@serve.deployment
+@serve.deployment(
+    autoscaling_config={
+        "min_replicas": 1,
+        "max_replicas": 3,
+        "target_num_ongoing_requests_per_replica": 3,
+        "upscale_delay_s": 10
+    }
+)
 class Yolo5Inference:
     @captureModel
     def __init__(self, param):
@@ -96,6 +120,7 @@ class Yolo5Inference:
 
     def extractQoA(self, prediction):
         report = {}
+        objectDetected = []
         for model in prediction.keys():
             if prediction[model]:
                 data = prediction[model] 
@@ -104,11 +129,17 @@ class Yolo5Inference:
                     cur_object = detected_object["object_{}".format(object_num)]
                     if isinstance(cur_object, list):
                         cur_object = cur_object[0]
-                    report[cur_object["name"]] =  cur_object["confidence"]
+                    objectDetected.append((cur_object["name"], cur_object["confidence"]))    
                     object_num += 1
-                report["number of object"] = object_num
+        report["object detected"] = objectDetected
         return report
-@serve.deployment
+@serve.deployment(
+    autoscaling_config={
+        "min_replicas": 1,
+        "max_replicas": 3,
+        "target_num_ongoing_requests_per_replica": 5,
+    }
+)
 class Ensemble_ML:
     def __init__(self, yolo5, yolo8):
         self.yolo5 = yolo5
@@ -124,9 +155,9 @@ class Ensemble_ML:
         yl8 = await self.yolo8.predict.remote(data=en_im)
         yl5 = ray.get(yl5)
         yl8 = ray.get(yl8)
-        agg_pred = await max_aggregate.remote(predictions = [yl5.getAs("prediction"), yl8.getAs("prediction")] )
+        agg_pred = await mean_aggregate.remote(predictions = [yl5.getAs("prediction"), yl8.getAs("prediction")] )
         response["prediction"] = {
-            "aggregated": agg_pred.data, yl5.data["model_name"]: yl5.data["prediction"][yl5.data["model_name"]],
+            "aggregated": agg_pred.data["prediction"], yl5.data["model_name"]: yl5.data["prediction"][yl5.data["model_name"]],
             yl8.data["model_name"]: yl8.data["prediction"][yl8.data["model_name"]],
         }
         response["image"] = yl8.data["image"]
@@ -134,9 +165,33 @@ class Ensemble_ML:
         return response
     @capture(activityType='assessDataQuality')
     def assessDataQuality(self, data):
-        height, width, _ = data.data.shape
-        return {"height": height, "width": width}
+        image = data.data
+        height, width = image.shape[:2]
+        resolution = round(width, 2), round(height, 2)
 
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        contrast = round(cv2.Laplacian(gray_image, cv2.CV_64F).var(), 2)
+        sharpness = round(cv2.Laplacian(gray_image, cv2.CV_64F).var(), 2)
+        brightness = round(np.mean(gray_image), 2)
+
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        saturation = round(np.mean(hsv_image[:, :, 1]), 2)
+
+        noise_mask = cv2.inRange(gray_image, 0, 30) + cv2.inRange(gray_image, 225, 255)
+        noise = np.mean(noise_mask) / 255 * 100
+
+        laplacian = cv2.Laplacian(gray_image, cv2.CV_64F)
+        blur = np.var(laplacian)
+        metrics = {
+            'resolution': resolution,
+            'contrast': contrast,
+            'sharpness': sharpness,
+            'brightness': brightness,
+            'saturation': saturation,
+            'noise': noise,
+            'blur': blur
+        }
+        return metrics
 @serve.deployment
 class MostBasicIngress:
     def __init__(self, ensemble):
@@ -151,8 +206,6 @@ class MostBasicIngress:
             "Confidence",
         ]
         self.server_log_columns = ["Image ID", "Response time"]
-        self.models_log = pd.DataFrame(columns=self.models_log_comlumns)
-        self.server_log = pd.DataFrame(columns=self.server_log_columns)
     async def __call__(self, request: Request):
         start_time = time.time()
         time_stamp = datetime.fromtimestamp(time.time())

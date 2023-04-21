@@ -27,6 +27,14 @@ CREATE TABLE IF NOT EXISTS PredictionQuality (
   requestId VARCHAR,
   PRIMARY KEY(id)
 );
+
+CREATE TABLE IF NOT EXISTS Error (
+  id uuid DEFAULT uuid_generate_v4 (),
+  type VARCHAR,
+  description VARCHAR,
+  requestId VARCHAR,
+  PRIMARY KEY(id)
+);
 -- Create activity table
 
 CREATE TABLE IF NOT EXISTS Predict (
@@ -109,3 +117,4 @@ CREATE TABLE IF NOT EXISTS WasDerivedFrom (
   sourceEntityId uuid,
   derivedEntityID uuid
 );
+

@@ -4,6 +4,7 @@ import json
 import functools
 import asyncpg
 import os
+import sys
 import psutil
 import psycopg
 import threading
@@ -14,7 +15,7 @@ from torch.nn.functional import linear
 
 
 config = (
-        "user=nguu0123 password=nguu0123456 host=172.17.0.3 port=5432 dbname=nguu0123"
+        "user=nguu0123 password=nguu0123456 host=172.17.0.2 port=5432 dbname=nguu0123"
     )
 class Data:
     def __init__(self, data, id=None, name=None, requestId=None):
@@ -29,7 +30,7 @@ class Data:
             for key in args:
                 if key in self.data:
                     returnData = returnData | self.data[key]
-            return Data(returnData, self.id)
+            return Data(returnData, self.id, None, self.requestId)
 
 
 class Prediction:
@@ -45,7 +46,7 @@ class Prediction:
             for key in args:
                 if key in self.data:
                     returnData = returnData | self.data[key]
-            return Prediction(returnData, self.id)
+            return Prediction(returnData, self.id, self.requestId)
 
 
 class DataQualityReport:
@@ -60,7 +61,7 @@ class DataQualityReport:
             for key in args:
                 if key in self.data:
                     returnData = returnData | self.data[key]
-            return DataQualityReport(returnData, self.id)
+            return DataQualityReport(returnData, self.id, self.requestId)
 
 
 class PredictionQuality:
@@ -75,7 +76,7 @@ class PredictionQuality:
             for key in args:
                 if key in self.data:
                     returnData = returnData | self.data[key]
-            return DataQualityReport(returnData, self.id)
+            return DataQualityReport(returnData, self.id, self.requestId)
 
 
 def capturePredictActivity(
@@ -208,6 +209,22 @@ def captureEnsembleActivity(
     record_to_insert = (activityId, output.id)
     cursor.execute(postgres_insert_query, record_to_insert)
 
+    predictionQuality = {}
+    if "QoA" in output.data:
+        predictionQuality["QoA"] = output.data["QoA"]
+    if not predictionQuality:
+        predictionQualityId = str(uuid.uuid4())
+        postgres_insert_query = (
+            """ INSERT INTO predictionquality(id, value, requestId) VALUES (%s,%s,%s)"""
+        )
+        record_to_insert = (predictionQualityId, json.dumps(predictionQuality), output.requestId)
+        cursor.execute(postgres_insert_query, record_to_insert)
+
+        postgres_insert_query = (
+            """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+        )
+        record_to_insert = (activityId, predictionQualityId)
+        cursor.execute(postgres_insert_query, record_to_insert)
     for input in inputs:
         postgres_insert_query = (
             """ INSERT INTO used(activityid, entityid) VALUES (%s,%s)"""
@@ -215,25 +232,39 @@ def captureEnsembleActivity(
         record_to_insert = (activityId, input.id)
         cursor.execute(postgres_insert_query, record_to_insert)
 
+def captureError(
+    activityId, errorType, errorDescription
+):
+    global config
+    connection = psycopg.connect(config, autocommit=True)
+    cursor = connection.cursor()
+    errorId = str(uuid.uuid4())
+    postgres_insert_query = """ INSERT INTO error(id, type, description) VALUES (%s,%s,%s)"""
+    record_to_insert = (errorId, errorType, errorDescription)
+    cursor.execute(postgres_insert_query, record_to_insert)
+
+    postgres_insert_query = """ INSERT INTO wasgeneratedby(activityid, entityid) VALUES (%s,%s)"""
+    record_to_insert = (activityId, errorId)
+    cursor.execute(postgres_insert_query, record_to_insert)
+
 
 def getModelId(modelName, param):
     global config
     connection = psycopg.connect(config, autocommit=True)
     cursor = connection.cursor()
-    postgreSQL_select_Query = (
-        "select * from model where name = %s and parameter ->> 'param' = %s"
-    )
-    cursor.execute(postgreSQL_select_Query, (modelName, param))
-    mobile_records = cursor.fetchall()
-    if cursor.rowcount == 0:
-        modelId = str(uuid.uuid4())
-        postgres_insert_query = (
+    #postgreSQL_select_Query = (
+    #    "select * from model where name = %s and parameter ->> 'param' = %s"
+    #)
+    #cursor.execute(postgreSQL_select_Query, (modelName, param))
+    #mobile_records = cursor.fetchall()
+    #if cursor.rowcount == 0:
+    modelId = str(uuid.uuid4())
+    postgres_insert_query = (
             """ INSERT INTO model(id, name, parameter) VALUES (%s,%s,%s)"""
-        )
-        record_to_insert = (modelId, modelName, json.dumps({"param": param}))
-        cursor.execute(postgres_insert_query, record_to_insert)
-        return modelId
-    return mobile_records[0][0]
+    )
+    record_to_insert = (modelId, modelName, json.dumps({"param": param}))
+    cursor.execute(postgres_insert_query, record_to_insert)
+    return modelId
 
 
 def report_proc_cpu(process):
@@ -275,67 +306,75 @@ def capture(activityType):
     def wrapper(func):
         @functools.wraps(func)
         def doFunc(*args, **kwargs):
-            startTime = datetime.now()
-            beforeCpu = None
-            predictionMem = None
-            if activityType == "predict":
-                beforeCpu = get_proc_cpu()
-                tracemalloc.start()
-            returnVal = func(*args, **kwargs)
-            if activityType == "predict":
-                predictionMem = tracemalloc.get_traced_memory()
-                predictionCpu = {"before": beforeCpu, "after": get_proc_cpu()}
-                tracemalloc.stop()
-            funcName = func.__name__
-            endTime = datetime.now()
             activityId = str(uuid.uuid4())
-            if activityType == "predict":
-                data = kwargs["data"]
-                returnVal = Prediction(returnVal,None, data.requestId)
-                async_thread = threading.Thread(
-                    target=capturePredictActivity,
-                    args= (
-                        activityId,
-                        startTime,
-                        endTime,
-                        data,
-                        returnVal,
-                        predictionCpu,
-                        predictionMem,
-                        args[0].id,
+            try:
+                startTime = datetime.now()
+                beforeCpu = None
+                predictionMem = None
+                if activityType == "predict":
+                    beforeCpu = get_proc_cpu()
+                    tracemalloc.start()
+                returnVal = func(*args, **kwargs)
+                if activityType == "predict":
+                    predictionMem = tracemalloc.get_traced_memory()
+                    predictionCpu = {"before": beforeCpu, "after": get_proc_cpu()}
+                    tracemalloc.stop()
+                funcName = func.__name__
+                endTime = datetime.now()
+                if activityType == "predict":
+                    data = kwargs["data"]
+                    returnVal = Prediction(returnVal,None, data.requestId)
+                    async_thread = threading.Thread(
+                        target=capturePredictActivity,
+                        args= (
+                            activityId,
+                            startTime,
+                            endTime,
+                            data,
+                            returnVal,
+                            predictionCpu,
+                            predictionMem,
+                            args[0].id,
+                        )
                     )
-                )
-                async_thread.start()
-            elif activityType == "assessDataQuality":
-                data = kwargs["data"]
-                returnVal = DataQualityReport(returnVal, data.requestId)
-                async_thread = threading.Thread(
-                    target=captureAssessDataQualityActivity,
-                    args=(activityId, data, returnVal
+                    async_thread.start()
+                elif activityType == "assessDataQuality":
+                    data = kwargs["data"]
+                    returnVal = DataQualityReport(returnVal, data.requestId)
+                    async_thread = threading.Thread(
+                        target=captureAssessDataQualityActivity,
+                        args=(activityId, data, returnVal
+                        )
                     )
-                )
-                async_thread.start()
-            elif activityType == "preprocessing":
-                inputData = kwargs["data"]
-                returnVal = Data(returnVal,None, None, inputData.requestId)
-                async_thread = threading.Thread(
-                    target=capturePreprocessingActivity,
-                    args=(activityId, inputData, returnVal, funcName
+                    async_thread.start()
+                elif activityType == "preprocessing":
+                    inputData = kwargs["data"]
+                    returnVal = Data(returnVal,None, None, inputData.requestId)
+                    async_thread = threading.Thread(
+                        target=capturePreprocessingActivity,
+                        args=(activityId, inputData, returnVal, funcName
+                        )
                     )
-                )
-                async_thread.start()
-            elif activityType == "ensemble":
-                inputPredictions = kwargs["predictions"]
-                returnVal = Prediction(returnVal, None, inputPredictions[0].requestId)
-                async_thread = threading.Thread(
-                    target=captureEnsembleActivity,
-                    args=
-                        (activityId, inputPredictions, returnVal, funcName
+                    async_thread.start()
+                elif activityType == "ensemble":
+                    inputPredictions = kwargs["predictions"]
+                    returnVal = Prediction(returnVal, None, inputPredictions[0].requestId)
+                    async_thread = threading.Thread(
+                        target=captureEnsembleActivity,
+                        args=
+                            (activityId, inputPredictions, returnVal, funcName
+                        )
                     )
-                )
+                    async_thread.start()
+                return returnVal
+            except: 
+                exc_type, exc_value, _ = sys.exc_info()
+                async_thread = threading.Thread(
+                        target=captureError,
+                        args=( activityId, exc_type.__name__, str(exc_value)
+                        )
+                    )
                 async_thread.start()
-            return returnVal
-
         return doFunc
 
     return wrapper

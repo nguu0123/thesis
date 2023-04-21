@@ -1,0 +1,18 @@
+TRUNCATE data;
+TRUNCATE dataqualityreport;
+TRUNCATE assessdataquality ;
+TRUNCATE preprocess ;
+TRUNCATE ensemblefunction ;
+TRUNCATE model ;
+TRUNCATE preprocessingutil ;
+TRUNCATE predict ;
+TRUNCATE prediction ;
+TRUNCATE dataqualityassessor ;
+TRUNCATE ensembleutil ;
+TRUNCATE wasassociatedwith ;
+TRUNCATE used ;
+TRUNCATE wasgeneratedby ;
+TRUNCATE wasattributedto ;
+TRUNCATE wasderivedfrom ;
+TRUNCATE predictionquality ;
+TRUNCATE error;

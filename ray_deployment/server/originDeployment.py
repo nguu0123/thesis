@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from qoa4ml.reports import Qoa_Client
 from qoa4ml.utils import load_config
 from ray import serve
+from ray.experimental.state.api import get_worker
 from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
 from ray.serve.handle import RayServeDeploymentHandle
@@ -45,34 +46,59 @@ def mean_aggregate(predictions):
 
 @ray.remote
 def max_aggregate(predictions):
+    print(predictions)
     agg_prediction = aggregation.agg_max(predictions)
     return agg_prediction
 
 
-@serve.deployment
+@serve.deployment(ray_actor_options={"num_cpus": 1})
 class Yolo8Inference:
     def __init__(self, param):
         self.model = Yolo8(param)
         self.param = param
-
+        self.request_served = 0
+        self.respond_time = 0
+        self.ignore_first_50 = 0
+        self.id = str(uuid.uuid4())
     def predict(self, image):
+        start_time = time.time()
         prediction, pre_img = self.model.yolov8_inference(image)
+        if self.ignore_first_50 == 1:
+            self.respond_time += time.time() - start_time
+            self.request_served += 1
+        else:
+            self.request_served += 1
+            if self.request_served == 50:
+                self.request_served = 0
+                self.ignore_first_50 = 1
         return {"prediction": prediction, "image": pre_img, "model_name": self.param}
 
 
-@serve.deployment
+@serve.deployment(ray_actor_options={"num_cpus": 7})
 class Yolo5Inference:
     def __init__(self, param):
         self.model = Yolo5(param)
         self.param = param
         self.inference_time = 0
+        self.request_served = 0
+        self.respond_time = 0
+        self.ignore_first_50 = 0
+        self.id = str(uuid.uuid4())
 
     def predict(self, image):
+        start_time = time.time()
         prediction, pre_img = self.model.yolov5_inference(image)
+        if self.ignore_first_50 == 1:
+            self.respond_time += time.time() - start_time
+            self.request_served += 1
+        else:
+            self.request_served += 1
+            if self.request_served == 50:
+                self.request_served = 0
+                self.ignore_first_50 = 1
         return {"prediction": prediction, "image": pre_img, "model_name": self.param}
 
-
-@serve.deployment
+@serve.deployment(ray_actor_options={"num_cpus": 1})
 class Ensemble_ML:
     def __init__(self, yolo5, yolo8):
         self.yolo5 = yolo5
@@ -81,6 +107,8 @@ class Ensemble_ML:
     async def inference(self, data):
         np_array = np.frombuffer(data, np.uint8)
         im = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+        start_time = time.time()
+        dataQuality = self.assessDataQuality(im)
         en_im = enhance_image.remote(im)
         response = {}
         yl5 = await self.yolo5.predict.remote(en_im)
@@ -95,8 +123,33 @@ class Ensemble_ML:
         }
         response["image"] = yl8["image"]
         return response
+    def assessDataQuality(self, image):
+        height, width = image.shape[:2]
+        resolution = round(width, 2), round(height, 2)
 
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        contrast = round(cv2.Laplacian(gray_image, cv2.CV_64F).var(), 2)
+        sharpness = round(cv2.Laplacian(gray_image, cv2.CV_64F).var(), 2)
+        brightness = round(np.mean(gray_image), 2)
 
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        saturation = round(np.mean(hsv_image[:, :, 1]), 2)
+
+        noise_mask = cv2.inRange(gray_image, 0, 30) + cv2.inRange(gray_image, 225, 255)
+        noise = np.mean(noise_mask) / 255 * 100
+
+        laplacian = cv2.Laplacian(gray_image, cv2.CV_64F)
+        blur = np.var(laplacian)
+        metrics = {
+            'resolution': resolution,
+            'contrast': contrast,
+            'sharpness': sharpness,
+            'brightness': brightness,
+            'saturation': saturation,
+            'noise': noise,
+            'blur': blur
+        }
+        return metrics
 @serve.deployment
 class MostBasicIngress:
     def __init__(self, ensemble):
@@ -113,15 +166,16 @@ class MostBasicIngress:
         self.server_log_columns = ["Image ID", "Response time"]
         self.models_log = pd.DataFrame(columns=self.models_log_comlumns)
         self.server_log = pd.DataFrame(columns=self.server_log_columns)
+        self.ignore_first_50 = 0 
 
     async def __call__(self, request: Request):
         start_time = time.time()
-        time_stamp = datetime.fromtimestamp(time.time())
         files = await request.form()
         data = await files["data"].read()
         image_id = await files["file name"].read()
         response = await self.ensemble.inference.remote(data)
         response = ray.get(response)
+
         #self.monitor(start_time, time_stamp, response["prediction"], image_id)
         return response
 
