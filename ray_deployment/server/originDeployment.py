@@ -60,6 +60,7 @@ class Yolo8Inference:
         self.respond_time = 0
         self.ignore_first_50 = 0
         self.id = str(uuid.uuid4())
+
     def predict(self, image):
         start_time = time.time()
         prediction, pre_img = self.model.yolov8_inference(image)
@@ -98,6 +99,7 @@ class Yolo5Inference:
                 self.ignore_first_50 = 1
         return {"prediction": prediction, "image": pre_img, "model_name": self.param}
 
+
 @serve.deployment(ray_actor_options={"num_cpus": 1})
 class Ensemble_ML:
     def __init__(self, yolo5, yolo8):
@@ -115,7 +117,7 @@ class Ensemble_ML:
         yl8 = await self.yolo8.predict.remote(en_im)
         yl5 = ray.get(yl5)
         yl8 = ray.get(yl8)
-        agg_pred = await max_aggregate.remote(yl5["prediction"] | yl8["prediction"])
+        agg_pred = await mean_aggregate.remote(yl5["prediction"] | yl8["prediction"])
         response["prediction"] = {
             "aggregated": agg_pred,
             yl5["model_name"]: yl5["prediction"][yl5["model_name"]],
@@ -123,6 +125,7 @@ class Ensemble_ML:
         }
         response["image"] = yl8["image"]
         return response
+
     def assessDataQuality(self, image):
         height, width = image.shape[:2]
         resolution = round(width, 2), round(height, 2)
@@ -141,15 +144,17 @@ class Ensemble_ML:
         laplacian = cv2.Laplacian(gray_image, cv2.CV_64F)
         blur = np.var(laplacian)
         metrics = {
-            'resolution': resolution,
-            'contrast': contrast,
-            'sharpness': sharpness,
-            'brightness': brightness,
-            'saturation': saturation,
-            'noise': noise,
-            'blur': blur
+            "resolution": resolution,
+            "contrast": contrast,
+            "sharpness": sharpness,
+            "brightness": brightness,
+            "saturation": saturation,
+            "noise": noise,
+            "blur": blur,
         }
         return metrics
+
+
 @serve.deployment
 class MostBasicIngress:
     def __init__(self, ensemble):
@@ -166,7 +171,7 @@ class MostBasicIngress:
         self.server_log_columns = ["Image ID", "Response time"]
         self.models_log = pd.DataFrame(columns=self.models_log_comlumns)
         self.server_log = pd.DataFrame(columns=self.server_log_columns)
-        self.ignore_first_50 = 0 
+        self.ignore_first_50 = 0
 
     async def __call__(self, request: Request):
         start_time = time.time()
@@ -176,13 +181,13 @@ class MostBasicIngress:
         response = await self.ensemble.inference.remote(data)
         response = ray.get(response)
 
-        #self.monitor(start_time, time_stamp, response["prediction"], image_id)
+        # self.monitor(start_time, time_stamp, response["prediction"], image_id)
         return response
 
     def monitor(self, start_time, times_stamp, inference_result, image_id):
         for model in inference_result.keys():
             if inference_result[model]:
-                data = inference_result[model] 
+                data = inference_result[model]
                 object_num = 0
                 for detected_object in data:
                     cur_object = detected_object["object_{}".format(object_num)]
@@ -198,7 +203,7 @@ class MostBasicIngress:
                         "models_log",
                     )
                     object_num += 1
-        self.append_to_log([image_id, time.time() - start_time], 'server_log')
+        self.append_to_log([image_id, time.time() - start_time], "server_log")
         self.request_served += 1
 
     def append_to_log(self, data, file_name):
@@ -214,8 +219,9 @@ class MostBasicIngress:
             writer_object = csv.writer(f_object)
             writer_object.writerow(data)
 
+
 models_config = load_config("../config/models.json")
-yolo5 = Yolo5Inference.bind(models_config['yolo5'])
-yolo8 = Yolo8Inference.bind(models_config['yolo8'])
+yolo5 = Yolo5Inference.bind(models_config["yolo5"])
+yolo8 = Yolo8Inference.bind(models_config["yolo8"])
 ensemble = Ensemble_ML.bind(yolo5, yolo8)
 server = MostBasicIngress.bind(ensemble)
