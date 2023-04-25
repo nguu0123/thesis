@@ -200,7 +200,7 @@ def captureEnsembleActivity(
     cursor.execute(postgres_insert_query, record_to_insert)
 
     postgres_insert_query = """ INSERT INTO prediction(id, name, requestId) VALUES (%s,%s,%s)"""
-    record_to_insert = (output.id, funcName + "result", output.requestId)
+    record_to_insert = (output.id, funcName + " result", output.requestId)
     cursor.execute(postgres_insert_query, record_to_insert)
 
     postgres_insert_query = (
@@ -212,7 +212,7 @@ def captureEnsembleActivity(
     predictionQuality = {}
     if "QoA" in output.data:
         predictionQuality["QoA"] = output.data["QoA"]
-    if not predictionQuality:
+    if predictionQuality:
         predictionQualityId = str(uuid.uuid4())
         postgres_insert_query = (
             """ INSERT INTO predictionquality(id, value, requestId) VALUES (%s,%s,%s)"""

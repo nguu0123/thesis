@@ -43,12 +43,13 @@ def enhance_image(data):
 @ray.remote
 @capture(activityType='ensemble')
 def mean_aggregate(predictions):
-    agg_prediction = aggregation.agg_mean(list(map(lambda x: x.data, predictions)))
+    agg_prediction = aggregation.agg_mean(reduce(lambda a, b: a.data | b.data, predictions))
     report = {}
     objectDetected = []
-    #for curObject in agg_prediction[0]:
-    #    objectDetected.append((agg_prediction[0][curObject]["name"], agg_prediction[0][curObject]["confidence"]))
-    #report["object detected"] = objectDetected
+    for i in range(len(agg_prediction)):
+        for key,value in agg_prediction[i].items():
+            objectDetected.append((value["name"], value["confidence"])) 
+    report["object detected"] = objectDetected
     return {"prediction": agg_prediction, "QoA" : report}
 
 @ray.remote
@@ -57,9 +58,10 @@ def max_aggregate(predictions):
     agg_prediction = aggregation.agg_max(reduce(lambda a, b: a.data | b.data, predictions))
     report = {}
     objectDetected = []
-    #for curObject in agg_prediction[0]:
-    #    objectDetected.append((agg_prediction[0][curObject]["name"], agg_prediction[0][curObject]["confidence"]))
-    #report["object detected"] = objectDetected
+    for i in range(len(agg_prediction)):
+        for key,value in agg_prediction[i].items():
+            objectDetected.append((value["name"], value["confidence"])) 
+    report["object detected"] = objectDetected
     return {"prediction": agg_prediction, "QoA" : report}
 
 

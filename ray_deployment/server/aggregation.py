@@ -1,3 +1,4 @@
+import copy
 def not_approximate(a, b):
     if abs(a - b) < 10:
         return False
@@ -6,7 +7,7 @@ def not_approximate(a, b):
 
 
 def get_prediction(list_pre, i):
-    pre_item = list_pre[i]
+    pre_item = copy.deepcopy(list_pre[i])
     keys = list(pre_item.keys())
     return pre_item[keys[0]]
 
@@ -18,36 +19,58 @@ def extract_dict(dict, keys):
     return result
 
 
-def compare_box(box1, box2):
-    for key in box1:
-        if not_approximate(box1[key], box2[key]):
-            return False
-    return True
+def compare_box(box1, box2, threshold):
+    x1 = box1['xmin']
+    y1 = box1['ymin']
+    x2 = box1['xmax']
+    y2 = box1['ymax']
 
+    x3 = box2['xmin']
+    y3 = box2['ymin']
+    x4 = box2['xmax']
+    y4 = box2['ymax']
+
+    area_box1 = (x2 - x1 + 1) * (y2 - y1 + 1)
+    area_box2 = (x4 - x3 + 1) * (y4 - y3 + 1)
+
+    x_intersection = max(x1, x3)
+    y_intersection = max(y1, y3)
+    x_intersection_end = min(x2, x4)
+    y_intersection_end = min(y2, y4)
+
+    area_intersection = max(0, x_intersection_end - x_intersection + 1) * max(0, y_intersection_end - y_intersection + 1)
+
+    area_union = area_box1 + area_box2 - area_intersection
+
+    iou = area_intersection / float(area_union)
+
+    if iou >= threshold:
+        return True 
+    else:
+        return False
 
 def agg_mean(predictions):
     pre_list = []
     agg_prediction = []
     object_count = 0
-    for key in predictions:
-        pre_list += predictions[key]
+    for model in predictions:
+        for i in range(len(predictions[model])):
+            for key,value in predictions[model][i].items():
+                pre_list += value 
     while pre_list:
-        pre_item = get_prediction(pre_list, 0)
+        pre_item = [pre_list[0]]
         class1 = extract_dict(pre_item[0], ["name"])
         box1 = extract_dict(pre_item[0], ["xmin", "ymin", "xmax", "ymax"])
         duplicate = []
         for i in range(1, len(pre_list)):
-            data2 = get_prediction(pre_list, i)[0]
+            data2 = pre_list[i]
             box2 = extract_dict(data2, ["xmin", "ymin", "xmax", "ymax"])
             class2 = extract_dict(data2, ["name"])
-            if compare_box(box1, box2):
+            if compare_box(box1, box2, 0.8):
                 if class1 == class2:
-                    pre_item += get_prediction(pre_list, i)
+                    pre_item += [pre_list[i]]
                     duplicate.append(i)
-                else:
-                    raise Exception("bounding box intercept")
-        for item in duplicate:
-            pre_list.pop(item)
+        pre_list = [pre_list[i] for i in range(len(pre_list)) if i not in duplicate]
         mean_item = pre_item[0]
         for item in pre_item[1:]:
             mean_item["confidence"] += item["confidence"]
@@ -63,21 +86,29 @@ def agg_max(predictions):
     pre_list = []
     agg_prediction = []
     object_count = 0
-    for key in predictions:
-        pre_list += predictions[key]
+    #print(predictions, '\n')
+    pre_list = []
+    for model in predictions:
+        for i in range(len(predictions[model])):
+            for key,value in predictions[model][i].items():
+                pre_list += value 
+    #print(pre_list, '\n')
     while pre_list:
-        pre_item = get_prediction(pre_list, 0)
+        pre_item = [pre_list[0]]
         box1 = extract_dict(pre_item[0], ["xmin", "ymin", "xmax", "ymax"])
+        class1 = extract_dict(pre_item[0], ["name"])
         duplicate = []
         for i in range(1, len(pre_list)):
             box2 = extract_dict(
-                get_prediction(pre_list, i)[0], ["xmin", "ymin", "xmax", "ymax"]
+                pre_list[i], ["xmin", "ymin", "xmax", "ymax"]
             )
-            if compare_box(box1, box2):
-                pre_item += get_prediction(pre_list, i)
+            class2 = extract_dict(pre_list[i], ["name"])
+            if compare_box(box1, box2, 0.8) and class1 == class2:
+                pre_item += [pre_list[i]]
                 duplicate.append(i)
-        for item in duplicate:
-            pre_list.pop(item)
+        #print(pre_list, '\n')
+        pre_list = [pre_list[i] for i in range(len(pre_list)) if i not in duplicate]
+        #print(pre_list, '\n')
         max_item = pre_item[0]
         for item in pre_item:
             if item["confidence"] > max_item["confidence"]:
@@ -88,76 +119,5 @@ def agg_max(predictions):
         agg_prediction.append(detect_obj)
     return agg_prediction
 
-
-data = {
-    "yolov5n": [
-        {
-            "object_0": [
-                {
-                    "xmin": 283.8602600097656,
-                    "ymin": 176.068603515625,
-                    "xmax": 629.1629638671875,
-                    "ymax": 384.3131103515625,
-                    "confidence": 0.7132321000099182,
-                    "class": 1,
-                    "name": "bicycle",
-                }
-            ]
-        },
-        {
-            "object_1": [
-                {
-                    "xmin": 371.38299560546875,
-                    "ymin": 44.06036376953125,
-                    "xmax": 534.8262939453125,
-                    "ymax": 376.6901550292969,
-                    "confidence": 0.6608238816261292,
-                    "class": 0,
-                    "name": "person",
-                }
-            ]
-        },
-    ],
-    "yolov8n": [
-        {
-            "object_0": [
-                {
-                    "xmin": 283.0,
-                    "ymin": 167.0,
-                    "xmax": 634.0,
-                    "ymax": 394.0,
-                    "confidence": 0.9223847985267639,
-                    "class": 1.0,
-                    "name": "bicycle",
-                }
-            ]
-        },
-        {
-            "object_1": [
-                {
-                    "xmin": 365.0,
-                    "ymin": 40.0,
-                    "xmax": 516.0,
-                    "ymax": 365.0,
-                    "confidence": 0.8321550488471985,
-                    "class": 0.0,
-                    "name": "person",
-                }
-            ]
-        },
-        {
-            "object_2": [
-                {
-                    "xmin": 503.0,
-                    "ymin": 148.0,
-                    "xmax": 640.0,
-                    "ymax": 237.0,
-                    "confidence": 0.3270763158798218,
-                    "class": 2.0,
-                    "name": "car",
-                }
-            ]
-        },
-    ],
-}
-agg_mean(data)
+#data = {'yolov5n': [{'object_0': [{'xmin': 63.36903381347656, 'ymin': 97.7342529296875, 'xmax': 479.23687744140625, 'ymax': 640.0, 'confidence': 0.5499464869499207, 'class': 21, 'name': 'bear'}]}], 'yolov8n': [{'object_0': [{'xmin': 0.0, 'ymin': 102.0, 'xmax': 480.0, 'ymax': 640.0, 'confidence': 0.5317056775093079, 'class': 21.0, 'name': 'bear'}]}, {'object_1': [{'xmin': 73.0, 'ymin': 89.0, 'xmax': 480.0, 'ymax': 639.0, 'confidence': 0.38965287804603577, 'class': 16.0, 'name': 'dog'}]}]}
+#print(agg_max(data))
