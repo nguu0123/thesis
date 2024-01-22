@@ -1,3 +1,0 @@
-1: Data quality, dimensions and manifestation
-  Different definition for DQ -> which one is used in this thesis
-
